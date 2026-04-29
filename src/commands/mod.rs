@@ -9,6 +9,7 @@ pub mod network;
 pub mod new;
 pub mod plugin;
 pub mod shell;
+pub mod template;
 pub mod test;
 pub mod tx;
 pub mod wallet;

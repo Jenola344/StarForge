@@ -28,6 +28,18 @@ Create and manage Stellar ed25519 keypairs locally. Generate cryptographically s
 ### ◻ Project Scaffolding
 Scaffold new Soroban smart contract projects from battle-tested templates with one command. Choose from: `hello-world`, `token`, `nft`, and `voting`. Use interactive mode (`--interactive`) to customize contract options like author, license, storage type, and test inclusion. Also scaffolds full Stellar dApp frontends (Vite + React).
 
+**NEW: Template Marketplace** - Discover and use community-contributed templates:
+```bash
+# Search for templates
+starforge template search defi
+
+# Use a marketplace template
+starforge new contract my-dex --template uniswap-v2 --from marketplace
+
+# Publish your own template
+starforge template publish ./my-template
+```
+
 ### 🚀 Contract Deployment
 Validate, size-check, and deploy compiled Soroban `.wasm` files to Testnet or Mainnet. Verifies account balance on-chain, calculates WASM hash, and generates the exact `stellar contract deploy` command to complete the deployment.
 
@@ -129,8 +141,42 @@ starforge new contract my-token --template token
 starforge new contract my-nft --template nft
 starforge new contract my-vote --template voting
 
+# Search marketplace templates
+starforge template search defi
+starforge new contract --search lending --tags defi
+
+# Use a marketplace template
+starforge new contract my-dex --template uniswap-v2 --from marketplace
+
 # Scaffold a Stellar dApp frontend (Vite + React)
 starforge new dapp my-dapp
+```
+
+### Template marketplace commands
+
+```bash
+# Initialize marketplace with example templates
+starforge template init
+
+# Search for templates
+starforge template search defi
+starforge template search --tags dex,amm
+
+# List all templates
+starforge template list
+
+# View template details
+starforge template show uniswap-v2
+
+# Publish your own template
+starforge template publish ./my-template \
+  --name my-awesome-template \
+  --description "An awesome contract" \
+  --author "Your Name" \
+  --tags "defi,custom"
+
+# Remove a template
+starforge template remove my-template
 ```
 
 ### Deploy commands
@@ -291,3 +337,33 @@ MIT © 2025 — See [LICENSE](./LICENSE) for details.
 Built for the Stellar ecosystem.
 Participates in the [Stellar Wave Program](https://www.drips.network/wave/stellar) via [Drips](https://www.drips.network).
 Powered by the [Stellar Horizon API](https://developers.stellar.org/api/horizon) and [Soroban](https://soroban.stellar.org).
+
+---
+
+## Documentation
+
+StarForge has comprehensive documentation covering all aspects of the project:
+
+### 📚 Core Documentation
+- **[README.md](README.md)** - This file, quick start and overview
+- **[Documentation.md](Documentation.md)** - Extended documentation with architecture overview
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete system architecture and design
+- **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** - Contributing and development guide
+- **[API_REFERENCE.md](API_REFERENCE.md)** - Complete command reference
+
+### 🎯 Feature Documentation
+- **[TEMPLATE_MARKETPLACE.md](TEMPLATE_MARKETPLACE.md)** - Template marketplace feature
+- **[QUICK_START_TEMPLATES.md](QUICK_START_TEMPLATES.md)** - Template quick start guide
+
+### 📖 Navigation
+- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Complete documentation index
+- **[DOCUMENTATION_SUMMARY.md](DOCUMENTATION_SUMMARY.md)** - Documentation overview
+
+### 📁 Examples
+- **[examples/template_marketplace_usage.md](examples/template_marketplace_usage.md)** - Practical examples
+- **[tutorials/hello-world/](tutorials/hello-world/)** - Beginner tutorial
+
+**Total**: 17 documentation files with 7,700+ lines covering architecture, development, API reference, and examples.
+
+For a complete overview, see [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md).
+

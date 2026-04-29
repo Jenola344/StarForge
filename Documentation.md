@@ -1,4 +1,22 @@
-# ⚡ starforge
+# ⚡ StarForge Documentation
+
+> Complete documentation for StarForge - A developer productivity CLI for Stellar and Soroban workflows built in Rust.
+
+## Documentation Index
+
+This is the main documentation hub for StarForge. For specific topics, see:
+
+- **[README.md](README.md)** - Quick start and basic usage
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
+- **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** - Contributing and development guide
+- **[API_REFERENCE.md](API_REFERENCE.md)** - Complete command reference
+- **[TEMPLATE_MARKETPLACE.md](TEMPLATE_MARKETPLACE.md)** - Template marketplace feature
+- **[QUICK_START_TEMPLATES.md](QUICK_START_TEMPLATES.md)** - Template quick start
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Recent implementation details
+
+---
+
+# ⚡ StarForge Overview
 
 > A developer productivity CLI for Stellar and Soroban workflows — built in Rust.
 
@@ -7,6 +25,47 @@
 ![Network: Stellar](https://img.shields.io/badge/Network-Stellar-blue.svg)
 ![Status: Active](https://img.shields.io/badge/Status-Active-green.svg)
 ![Stellar Wave](https://img.shields.io/badge/Stellar-Wave%20Program-blueviolet.svg)
+
+---
+
+## Architecture Overview
+
+StarForge is built with a modular architecture that separates concerns into distinct layers:
+
+### System Layers
+
+```
+┌─────────────────────────────────────────┐
+│         User Interface (CLI)            │
+│         - Command parsing               │
+│         - Output formatting             │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│         Command Layer                   │
+│         - Business logic                │
+│         - Input validation              │
+│         - Command orchestration         │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│         Utility Layer                   │
+│         - Configuration management      │
+│         - API clients (Horizon/Soroban) │
+│         - Cryptography                  │
+│         - Template system               │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│         External Systems                │
+│         - Stellar Horizon API           │
+│         - Soroban RPC                   │
+│         - File System                   │
+│         - Hardware Wallets              │
+└─────────────────────────────────────────┘
+```
+
+For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 

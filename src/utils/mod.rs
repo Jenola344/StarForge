@@ -15,3 +15,4 @@ pub mod sandbox;
 pub mod stream;
 pub mod test_runner;
 pub mod tutorial_engine;
+pub mod templates;
