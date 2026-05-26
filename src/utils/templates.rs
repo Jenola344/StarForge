@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateRegistry {
-    pub version: String,
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TemplateRegistry {
     #[serde(default)]
@@ -13,15 +10,47 @@ pub struct TemplateRegistry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TemplateSource {
+    Git { url: String, branch: Option<String> },
+    Local { path: String },
+    Builtin { id: String },
+}
+
+impl std::fmt::Display for TemplateSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TemplateSource::Git { url, branch } => {
+                if let Some(branch) = branch {
+                    write!(f, "git:{}@{}", url, branch)
+                } else {
+                    write!(f, "git:{}", url)
+                }
+            }
+            TemplateSource::Local { path } => write!(f, "local:{}", path),
+            TemplateSource::Builtin { id } => write!(f, "builtin:{}", id),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
     pub description: String,
+    pub author: String,
     pub version: String,
-    pub source: String,
+    pub source: TemplateSource,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub path: Option<String>,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub verified: bool,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,6 +72,15 @@ fn registry_path() -> Result<PathBuf> {
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }
     Ok(dir.join("registry.json"))
+}
+
+fn templates_dir() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let dir = home.join(".starforge").join("templates").join("storage");
+    if !dir.exists() {
+        fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    Ok(dir)
 }
 
 fn template_storage_dir() -> Result<PathBuf> {
@@ -273,6 +311,7 @@ pub fn publish_template(
         updated_at: chrono::Utc::now().to_rfc3339(),
         downloads: 0,
         verified: false,
+        path: None,
     };
     
     add_template(entry)?;
@@ -318,6 +357,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
             downloads: 100,
             verified: true,
+            path: None,
         });
         
         // Test name search

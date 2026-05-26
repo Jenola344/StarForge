@@ -9,7 +9,6 @@ pub mod monitor;
 pub mod network;
 pub mod new;
 pub mod plugin;
-pub mod template;
 pub mod shell;
 pub mod template;
 pub mod test;
