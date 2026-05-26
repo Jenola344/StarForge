@@ -27,12 +27,6 @@ pub enum NewCommands {
         /// Interactively customize the generated contract
         #[arg(long)]
         interactive: bool,
-        /// Use a template from the marketplace
-        #[arg(long)]
-        from: Option<String>,
-        /// Search for templates in the marketplace
-        #[arg(long)]
-        search: Option<String>,
         /// Filter templates by tags (comma-separated)
         #[arg(long)]
         tags: Option<String>,
@@ -46,9 +40,9 @@ pub enum NewCommands {
 
 pub fn handle(cmd: NewCommands) -> Result<()> {
     match cmd {
-        NewCommands::Contract { name, template, from, search, interactive } => {
+        NewCommands::Contract { name, template, from, search, interactive, tags } => {
             if let Some(query) = search {
-                return search_templates(&query);
+                return search_templates(&query, tags.as_deref());
             }
             let name = name.ok_or_else(|| anyhow::anyhow!("A contract name is required unless --search is used"))?;
             if interactive {
@@ -69,9 +63,21 @@ pub fn handle(cmd: NewCommands) -> Result<()> {
     }
 }
 
-fn search_templates(query: &str) -> Result<()> {
-    let results = templates::search_templates(query)?;
+fn search_templates(query: &str, tags: Option<&str>) -> Result<()> {
+    let tag_list = tags.map(|t| {
+        t.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+    });
+    
+    let results = templates::search_templates(query, tag_list.as_deref())?;
     p::header(&format!("Template search results for '{}'", query));
+    
+    if let Some(ref tags) = tag_list {
+        p::kv("Tags", &tags.join(", "));
+    }
+    
     if results.is_empty() {
         p::info("No templates matched that query.");
         return Ok(());
