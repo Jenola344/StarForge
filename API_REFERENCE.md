@@ -222,6 +222,50 @@ starforge wallet rename alice alice-testnet
 
 ---
 
+### `starforge wallet export`
+
+Export a wallet to a JSON backup file.
+
+**Usage:**
+```bash
+starforge wallet export <NAME> --output <FILE>
+```
+
+**Arguments:**
+- `<NAME>` - Wallet name to export
+
+**Options:**
+- `--output <FILE>` - Output file path for the backup JSON
+
+**Example:**
+```bash
+starforge wallet export alice --output ./wallet-backup.json
+```
+
+**Notes:**
+- Secrets are written only to the backup file and are never printed to stdout.
+
+---
+
+### `starforge wallet import`
+
+Import wallets from a JSON backup file.
+
+**Usage:**
+```bash
+starforge wallet import --file <FILE>
+```
+
+**Options:**
+- `--file <FILE>` - Path to a wallet backup JSON file
+
+**Example:**
+```bash
+starforge wallet import --file ./wallet-backup.json
+```
+
+---
+
 ### `starforge wallet sign`
 
 Sign an arbitrary message using a wallet.

@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 /// Validates that a string is a well-formed Stellar Ed25519 public key.
 ///
@@ -46,10 +47,16 @@ pub fn validate_contract_id(id: &str) -> Result<()> {
         anyhow::bail!("Invalid contract ID: must start with 'C'.");
     }
     if id.len() != 56 {
-        anyhow::bail!("Invalid contract ID: expected 56 characters, got {}.", id.len());
+        anyhow::bail!(
+            "Invalid contract ID: expected 56 characters, got {}.",
+            id.len()
+        );
     }
     if let Some(bad_char) = id.chars().find(|c| !matches!(c, 'A'..='Z' | '2'..='7')) {
-        anyhow::bail!("Invalid contract ID: contains invalid character '{}'.", bad_char);
+        anyhow::bail!(
+            "Invalid contract ID: contains invalid character '{}'.",
+            bad_char
+        );
     }
     Ok(())
 }
@@ -88,9 +95,52 @@ pub fn validate_network(network: &str) -> Result<()> {
     }
 }
 
+/// Validates a Stellar secret key or encrypted bundle.
+pub fn validate_secret_key(secret: &str) -> Result<()> {
+    if secret.contains(':') {
+        let parts: Vec<&str> = secret.split(':').collect();
+        if parts.len() != 3 {
+            anyhow::bail!("Invalid encrypted secret bundle format");
+        }
+        for part in parts {
+            BASE64
+                .decode(part)
+                .map_err(|_| anyhow::anyhow!("Invalid base64 in encrypted secret bundle"))?;
+        }
+        return Ok(());
+    }
+
+    if !secret.starts_with('S') {
+        anyhow::bail!("Invalid secret key: must start with 'S'.");
+    }
+    if secret.len() != 56 {
+        anyhow::bail!(
+            "Invalid secret key: expected 56 characters, got {}.",
+            secret.len()
+        );
+    }
+    if let Some(bad_char) = secret.chars().find(|c| !matches!(c, 'A'..='Z' | '2'..='7')) {
+        anyhow::bail!(
+            "Invalid secret key: contains invalid character '{}'.",
+            bad_char
+        );
+    }
+    Ok(())
+}
+
+/// Validates that a network exists in the current configuration.
+pub fn validate_network_exists(cfg: &Config, network: &str) -> Result<()> {
+    if cfg.networks.contains_key(network) {
+        return Ok(());
+    }
+    validate_network(network)
+}
+
 /// Validates an amount string parses to a positive f64.
 pub fn validate_amount(amount: &str) -> Result<f64> {
-    let amt: f64 = amount.parse().map_err(|_| anyhow::anyhow!("Invalid amount format: '{}'", amount))?;
+    let amt: f64 = amount
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid amount format: '{}'", amount))?;
     if amt <= 0.0 {
         anyhow::bail!("Amount must be strictly positive, got {}", amt);
     }
@@ -103,7 +153,10 @@ pub fn validate_wallet_name(name: &str) -> Result<()> {
     if name.is_empty() {
         anyhow::bail!("Wallet name cannot be empty.");
     }
-    if let Some(bad_char) = name.chars().find(|c| !c.is_alphanumeric() && *c != '-' && *c != '_') {
+    if let Some(bad_char) = name
+        .chars()
+        .find(|c| !c.is_alphanumeric() && *c != '-' && *c != '_')
+    {
         anyhow::bail!("Invalid wallet name '{}': contains invalid character '{}'. Use alphanumeric, dash, or underscore.", name, bad_char);
     }
     Ok(())
@@ -177,14 +230,14 @@ const CURRENT_CONFIG_VERSION: &str = "1";
 
 pub fn migrate_config(mut config: Config) -> Result<Config> {
     let config_version = config.version.as_str();
-    
+
     if config_version == CURRENT_CONFIG_VERSION {
         return Ok(config);
     }
-    
+
     // Create backup before migration
     backup_config(&config)?;
-    
+
     // Apply migrations in sequence
     match config_version {
         "" | "0" => {
@@ -199,7 +252,7 @@ pub fn migrate_config(mut config: Config) -> Result<Config> {
             );
         }
     }
-    
+
     Ok(config)
 }
 
@@ -209,13 +262,13 @@ fn backup_config(config: &Config) -> Result<()> {
         config.version,
         chrono::Utc::now().timestamp()
     ));
-    
-    let contents = toml::to_string_pretty(config)
-        .with_context(|| "Failed to serialize config for backup")?;
-    
+
+    let contents =
+        toml::to_string_pretty(config).with_context(|| "Failed to serialize config for backup")?;
+
     fs::write(&backup_path, contents)
         .with_context(|| format!("Failed to write backup to {:?}", backup_path))?;
-    
+
     Ok(())
 }
 
@@ -223,29 +276,30 @@ fn backup_config(config: &Config) -> Result<()> {
 pub fn rollback_config(version: &str) -> Result<()> {
     let config_dir = config_dir();
     let backup_pattern = format!("config.backup.v{}", version);
-    
+
     let mut backups: Vec<_> = fs::read_dir(&config_dir)?
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
-            entry.file_name()
+            entry
+                .file_name()
                 .to_string_lossy()
                 .starts_with(&backup_pattern)
         })
         .collect();
-    
+
     if backups.is_empty() {
         anyhow::bail!("No backup found for version '{}'", version);
     }
-    
+
     // Sort by timestamp (newest first)
     backups.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
-    
+
     let latest_backup = &backups[0];
     let backup_path = latest_backup.path();
-    
+
     fs::copy(&backup_path, config_path())
         .with_context(|| format!("Failed to restore backup from {:?}", backup_path))?;
-    
+
     Ok(())
 }
 
@@ -273,17 +327,17 @@ pub fn load() -> Result<Config> {
     }
     let contents = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read config at {:?}", path))?;
-    let mut config: Config = toml::from_str(&contents)
-        .with_context(|| "Failed to parse config file")?;
-    
+    let mut config: Config =
+        toml::from_str(&contents).with_context(|| "Failed to parse config file")?;
+
     // Migrate config if needed
     config = migrate_config(config)?;
-    
+
     // Save migrated config
     if config.version != CURRENT_CONFIG_VERSION {
         save(&config)?;
     }
-    
+
     Ok(config)
 }
 
@@ -364,6 +418,28 @@ mod tests {
         assert!(validate_wallet_name("alice!").is_err());
         assert!(validate_wallet_name("my wallet").is_err());
     }
+
+    #[test]
+    fn test_valid_plain_secret_key() {
+        let secret = "SAW46Z7TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNT";
+        assert!(validate_secret_key(secret).is_ok());
+    }
+
+    #[test]
+    fn test_valid_encrypted_secret_bundle() {
+        let salt = BASE64.encode([0u8; 16]);
+        let nonce = BASE64.encode([1u8; 12]);
+        let cipher = BASE64.encode([2u8; 32]);
+        let bundle = format!("{}:{}:{}", salt, nonce, cipher);
+        assert!(validate_secret_key(&bundle).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_secret_key() {
+        assert!(validate_secret_key("not-a-key").is_err());
+        assert!(validate_secret_key("S123").is_err());
+        assert!(validate_secret_key("bad:bundle").is_err());
+    }
 }
 
 pub fn save(config: &Config) -> Result<()> {
@@ -372,15 +448,14 @@ pub fn save(config: &Config) -> Result<()> {
         fs::create_dir_all(&dir)
             .with_context(|| format!("Failed to create config dir {:?}", dir))?;
     }
-    let contents = toml::to_string_pretty(config)
-        .with_context(|| "Failed to serialize config")?;
-    fs::write(config_path(), contents)
-        .with_context(|| "Failed to write config file")?;
+    let contents = toml::to_string_pretty(config).with_context(|| "Failed to serialize config")?;
+    fs::write(config_path(), contents).with_context(|| "Failed to write config file")?;
     Ok(())
 }
 
 pub fn get_network_config(cfg: &Config, network: &str) -> Result<NetworkConfig> {
-    cfg.networks.get(network)
+    cfg.networks
+        .get(network)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Network '{}' not found in configuration", network))
 }

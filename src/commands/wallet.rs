@@ -1,12 +1,47 @@
 use crate::utils::{config, crypto, hardware_wallet, horizon, multisig, print as p};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::Subcommand;
 use colored::*;
 use ed25519_dalek::{Signer, SigningKey};
 use rand::RngCore;
-use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
+use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
+
+const WALLET_BACKUP_VERSION: &str = "1";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WalletBackup {
+    version: String,
+    exported_at: String,
+    wallets: Vec<WalletBackupEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WalletBackupEntry {
+    name: String,
+    public_key: String,
+    secret_key: Option<String>,
+    network: String,
+    created_at: String,
+    funded: bool,
+}
+
+impl From<&config::WalletEntry> for WalletBackupEntry {
+    fn from(entry: &config::WalletEntry) -> Self {
+        Self {
+            name: entry.name.clone(),
+            public_key: entry.public_key.clone(),
+            secret_key: entry.secret_key.clone(),
+            network: entry.network.clone(),
+            created_at: entry.created_at.clone(),
+            funded: entry.funded,
+        }
+    }
+}
 
 #[derive(Subcommand)]
 pub enum WalletCommands {
@@ -45,9 +80,20 @@ pub enum WalletCommands {
         name: String,
     },
     /// Rename a wallet
-    Rename {
-        old_name: String,
-        new_name: String,
+    Rename { old_name: String, new_name: String },
+    /// Export a wallet to a JSON backup file
+    Export {
+        /// Wallet name to export
+        name: String,
+        /// Output file path for the backup JSON
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Import wallets from a JSON backup file
+    Import {
+        /// Path to backup JSON file
+        #[arg(long)]
+        file: PathBuf,
     },
 
     /// Connect to a hardware wallet (Ledger/Trezor) and show device info
@@ -142,16 +188,27 @@ pub enum MultisigCommands {
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
     match cmd {
-        WalletCommands::Create { name, fund, network, encrypt } => create(name, fund, network, encrypt),
-        WalletCommands::List                  => list(),
+        WalletCommands::Create {
+            name,
+            fund,
+            network,
+            encrypt,
+        } => create(name, fund, network, encrypt),
+        WalletCommands::List => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
         WalletCommands::Fund { name } => fund_wallet(name),
         WalletCommands::Remove { name } => remove(name),
         WalletCommands::Rename { old_name, new_name } => rename(old_name, new_name),
+        WalletCommands::Export { name, output } => export_wallet(name, output),
+        WalletCommands::Import { file } => import_wallets(file),
         WalletCommands::Connect { device } => connect_hardware(device),
         WalletCommands::HwAddress { device, path } => hw_address(device, &path),
         WalletCommands::HwStatus { device } => hw_status(device),
-        WalletCommands::Sign { name, message, hardware } => sign_message(name, message, hardware),
+        WalletCommands::Sign {
+            name,
+            message,
+            hardware,
+        } => sign_message(name, message, hardware),
         WalletCommands::Multisig(cmd) => handle_multisig(cmd),
     }
 }
@@ -160,7 +217,11 @@ fn connect_hardware(device: hardware_wallet::HardwareWalletKind) -> Result<()> {
     p::header("Hardware Wallet — Connect");
     p::step(1, 3, &format!("Initializing HID subsystem for {}…", device));
     let info = hardware_wallet::connect(device)?;
-    p::step(2, 3, &format!("{} HID device(s) visible", info.device_count));
+    p::step(
+        2,
+        3,
+        &format!("{} HID device(s) visible", info.device_count),
+    );
     p::step(3, 3, "Connection verified");
     println!();
     p::success(&format!("{} connected", device));
@@ -172,7 +233,11 @@ fn connect_hardware(device: hardware_wallet::HardwareWalletKind) -> Result<()> {
 
 fn hw_address(device: hardware_wallet::HardwareWalletKind, path: &str) -> Result<()> {
     p::header("Hardware Wallet — Stellar Address");
-    p::step(1, 2, &format!("Requesting address from {} at {}", device, path));
+    p::step(
+        1,
+        2,
+        &format!("Requesting address from {} at {}", device, path),
+    );
     let address = hardware_wallet::get_stellar_address(device, path)?;
     p::step(2, 2, "Address received");
     println!();
@@ -225,7 +290,8 @@ fn sign_message(
         sk.clone()
     } else {
         let pwd = crypto::prompt_password(&format!("Enter password for wallet '{}'", name), false)?;
-        crypto::decrypt_secret(&pwd, sk).map_err(|_| anyhow::anyhow!("Incorrect password or unable to decrypt."))?
+        crypto::decrypt_secret(&pwd, sk)
+            .map_err(|_| anyhow::anyhow!("Incorrect password or unable to decrypt."))?
     };
 
     let decoded_secret = StellarPrivateKey::from_string(&plain_sk)?;
@@ -280,7 +346,11 @@ fn create(name: String, fund: bool, network_override: Option<String>, encrypt: b
         secret_key.clone()
     };
 
-    let status = if encrypt { "Encrypted and safely stored." } else { "Stored in plaintext (not recommended for mainnet)." };
+    let status = if encrypt {
+        "Encrypted and safely stored."
+    } else {
+        "Stored in plaintext (not recommended for mainnet)."
+    };
     p::kv("Secret Key", status);
     println!();
 
@@ -382,7 +452,10 @@ fn show(name: String, reveal: bool) -> Result<()> {
                 p::warn("Warning: This wallet is using an unencrypted legacy key!");
                 p::kv("Secret Key", sk);
             } else {
-                let pwd = crypto::prompt_password(&format!("Enter password for wallet '{}'", name), false)?;
+                let pwd = crypto::prompt_password(
+                    &format!("Enter password for wallet '{}'", name),
+                    false,
+                )?;
                 match crypto::decrypt_secret(&pwd, sk) {
                     Ok(plain_sk) => p::kv("Secret Key", &plain_sk),
                     Err(_) => anyhow::bail!("Incorrect password or unable to decrypt."),
@@ -466,7 +539,7 @@ fn remove(name: String) -> Result<()> {
 fn rename(old_name: String, new_name: String) -> Result<()> {
     config::validate_wallet_name(&old_name)?;
     config::validate_wallet_name(&new_name)?;
-    
+
     let mut cfg = config::load()?;
     if !cfg.wallets.iter().any(|w| w.name == old_name) {
         anyhow::bail!("No wallet named '{}' found", old_name);
@@ -485,6 +558,105 @@ fn rename(old_name: String, new_name: String) -> Result<()> {
     p::info(&format!(
         "View it with: {}",
         format!("starforge wallet show {}", new_name).cyan()
+    ));
+    Ok(())
+}
+
+fn export_wallet(name: String, output: PathBuf) -> Result<()> {
+    config::validate_wallet_name(&name)?;
+    let cfg = config::load()?;
+    let wallet = cfg
+        .wallets
+        .iter()
+        .find(|w| w.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", name))?;
+
+    if output.exists() && output.is_dir() {
+        anyhow::bail!("Output path is a directory: {}", output.display());
+    }
+
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create {}", parent.display()))?;
+        }
+    }
+
+    let backup = WalletBackup {
+        version: WALLET_BACKUP_VERSION.to_string(),
+        exported_at: Utc::now().to_rfc3339(),
+        wallets: vec![WalletBackupEntry::from(wallet)],
+    };
+
+    let contents = serde_json::to_string_pretty(&backup)
+        .with_context(|| "Failed to serialize wallet backup")?;
+    fs::write(&output, contents)
+        .with_context(|| format!("Failed to write {}", output.display()))?;
+
+    p::success(&format!("Wallet '{}' exported", name));
+    p::kv("Backup file", &output.display().to_string());
+    p::info("Secrets are only stored in the backup file; they are not printed to stdout.");
+    Ok(())
+}
+
+fn import_wallets(file: PathBuf) -> Result<()> {
+    config::validate_file_path(&file, Some("json"))?;
+    let contents =
+        fs::read_to_string(&file).with_context(|| format!("Failed to read {}", file.display()))?;
+    let backup: WalletBackup =
+        serde_json::from_str(&contents).with_context(|| "Invalid backup JSON format")?;
+
+    if backup.version != WALLET_BACKUP_VERSION {
+        anyhow::bail!(
+            "Unsupported backup version '{}'. Expected '{}'.",
+            backup.version,
+            WALLET_BACKUP_VERSION
+        );
+    }
+
+    if backup.wallets.is_empty() {
+        anyhow::bail!("Backup file contains no wallets.");
+    }
+
+    let mut seen = HashSet::new();
+    for wallet in &backup.wallets {
+        if !seen.insert(wallet.name.clone()) {
+            anyhow::bail!("Duplicate wallet '{}' in backup file", wallet.name);
+        }
+    }
+
+    let mut cfg = config::load()?;
+
+    for wallet in &backup.wallets {
+        config::validate_wallet_name(&wallet.name)?;
+        config::validate_public_key(&wallet.public_key)?;
+        if let Some(secret) = &wallet.secret_key {
+            config::validate_secret_key(secret)?;
+        }
+        config::validate_network_exists(&cfg, &wallet.network)?;
+
+        if cfg.wallets.iter().any(|w| w.name == wallet.name) {
+            anyhow::bail!("Wallet '{}' already exists", wallet.name);
+        }
+    }
+
+    let imported = backup.wallets.len();
+    for wallet in backup.wallets {
+        cfg.wallets.push(config::WalletEntry {
+            name: wallet.name,
+            public_key: wallet.public_key,
+            secret_key: wallet.secret_key,
+            network: wallet.network,
+            created_at: wallet.created_at,
+            funded: wallet.funded,
+        });
+    }
+
+    config::save(&cfg)?;
+    p::success(&format!(
+        "Imported {} wallet(s) from {}",
+        imported,
+        file.display()
     ));
     Ok(())
 }
@@ -529,24 +701,44 @@ mod tests {
 
 fn handle_multisig(cmd: MultisigCommands) -> Result<()> {
     match cmd {
-        MultisigCommands::Create { name, threshold, signers, network } => multisig_create(name, threshold, signers, network),
-        MultisigCommands::Sign { name, transaction, output } => multisig_sign(name, transaction, output),
+        MultisigCommands::Create {
+            name,
+            threshold,
+            signers,
+            network,
+        } => multisig_create(name, threshold, signers, network),
+        MultisigCommands::Sign {
+            name,
+            transaction,
+            output,
+        } => multisig_sign(name, transaction, output),
         MultisigCommands::List => multisig_list(),
         MultisigCommands::Show { name } => multisig_show(name),
-        MultisigCommands::Submit { name, transaction, network } => multisig_submit(name, transaction, network),
+        MultisigCommands::Submit {
+            name,
+            transaction,
+            network,
+        } => multisig_submit(name, transaction, network),
     }
 }
 
-fn multisig_create(name: String, threshold: u8, signers: String, network: Option<String>) -> Result<()> {
+fn multisig_create(
+    name: String,
+    threshold: u8,
+    signers: String,
+    network: Option<String>,
+) -> Result<()> {
     config::validate_wallet_name(&name)?;
     multisig::validate_threshold(threshold)?;
 
     let cfg = config::load()?;
-    let wallet = cfg
-        .wallets
-        .iter()
-        .find(|w| w.name == name)
-        .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found. Create it first with `starforge wallet create {}`", name, name))?;
+    let wallet = cfg.wallets.iter().find(|w| w.name == name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Wallet '{}' not found. Create it first with `starforge wallet create {}`",
+            name,
+            name
+        )
+    })?;
 
     let network = network.unwrap_or_else(|| wallet.network.clone());
     config::validate_network(&network)?;
@@ -564,9 +756,13 @@ fn multisig_create(name: String, threshold: u8, signers: String, network: Option
     let mut signer_entries = Vec::new();
     for signer_name in signer_names {
         config::validate_wallet_name(&signer_name)?;
-        let signer_wallet = cfg.wallets.iter().find(|w| w.name == signer_name).ok_or_else(|| {
-            anyhow::anyhow!("Signer wallet '{}' not found in local config", signer_name)
-        })?;
+        let signer_wallet = cfg
+            .wallets
+            .iter()
+            .find(|w| w.name == signer_name)
+            .ok_or_else(|| {
+                anyhow::anyhow!("Signer wallet '{}' not found in local config", signer_name)
+            })?;
         signer_entries.push(multisig::Signer {
             public_key: signer_wallet.public_key.clone(),
             weight: 1,
@@ -575,7 +771,11 @@ fn multisig_create(name: String, threshold: u8, signers: String, network: Option
     }
 
     let total_weight = multisig::calculate_total_weight(&signer_entries);
-    let thresholds = multisig::Thresholds { low: threshold, medium: threshold, high: threshold };
+    let thresholds = multisig::Thresholds {
+        low: threshold,
+        medium: threshold,
+        high: threshold,
+    };
     multisig::validate_thresholds(&thresholds, total_weight)?;
 
     let account = multisig::MultiSigAccount {
@@ -616,7 +816,9 @@ fn multisig_sign(name: String, transaction: PathBuf, output: Option<PathBuf>) ->
     let mut signed = 0u32;
     for s in &account.signers {
         let wallet_name = s.name.clone().unwrap_or_else(|| s.public_key.clone());
-        let Some(w) = cfg.wallets.iter().find(|w| w.public_key == s.public_key) else { continue };
+        let Some(w) = cfg.wallets.iter().find(|w| w.public_key == s.public_key) else {
+            continue;
+        };
         let Some(sk) = &w.secret_key else { continue };
 
         let plain_sk = if !sk.contains(':') && sk.starts_with('S') && sk.len() == 56 {
@@ -689,7 +891,7 @@ fn multisig_show(name: String) -> Result<()> {
     p::separator();
     p::kv_accent("Account ID", &multisig_account.account_id);
     p::kv("Created", &multisig_account.created_at);
-    
+
     println!();
     p::info("Thresholds:");
     p::kv("  Low", &multisig_account.thresholds.low.to_string());
@@ -698,7 +900,7 @@ fn multisig_show(name: String) -> Result<()> {
 
     println!();
     p::info(&format!("Signers ({}):", multisig_account.signers.len()));
-    
+
     if multisig_account.signers.is_empty() {
         p::warn("  No signers configured yet");
     } else {
@@ -754,6 +956,9 @@ fn multisig_submit(name: String, transaction: PathBuf, network: Option<String>) 
     p::success("Transaction submitted");
     p::kv_accent("Hash", &result.hash);
     p::kv("Successful", &result.successful.to_string());
-    p::info(&format!("View on explorer: https://stellar.expert/explorer/{}/tx/{}", network, result.hash));
+    p::info(&format!(
+        "View on explorer: https://stellar.expert/explorer/{}/tx/{}",
+        network, result.hash
+    ));
     Ok(())
 }
