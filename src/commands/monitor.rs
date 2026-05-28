@@ -202,6 +202,7 @@ fn monitor_contract(
 fn monitor_wallet(
     wallet_name: &str,
     threshold: Option<f64>,
+    balance_alert: Option<f64>,
     network: &str,
     interval: u64,
 ) -> Result<()> {
@@ -213,8 +214,20 @@ fn monitor_wallet(
         .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", wallet_name))?;
 
     let threshold = threshold.unwrap_or(0.0);
-    if threshold <= 0.0 {
-        notifications::warn("No --threshold provided; will print balance changes only.");
+    if threshold <= 0.0 && balance_alert.is_none() {
+        notifications::warn(
+            "No --threshold or --balance-alert provided; will print balance changes only.",
+        );
+    }
+
+    if let Some(alert_level) = balance_alert {
+        if alert_level <= 0.0 {
+            anyhow::bail!("--balance-alert must be greater than zero");
+        }
+        notifications::info(&format!(
+            "Watchman enabled: alert when balance drops below {:.7} XLM.",
+            alert_level
+        ));
     }
 
     notifications::info(&format!(
@@ -223,7 +236,17 @@ fn monitor_wallet(
     ));
 
     let mut last_balance: Option<f64> = None;
-    loop {
+    let mut low_balance_alerted = false;
+
+    let running = Arc::new(AtomicBool::new(true));
+    {
+        let running = Arc::clone(&running);
+        ctrlc::set_handler(move || {
+            running.store(false, Ordering::SeqCst);
+        })?;
+    }
+
+    while running.load(Ordering::SeqCst) {
         let account = horizon::fetch_account(&wallet.public_key, network)?;
         let native = account
             .balances
@@ -249,4 +272,6 @@ fn monitor_wallet(
 
         std::thread::sleep(std::time::Duration::from_secs(interval.max(1)));
     }
+
+    Ok(())
 }
