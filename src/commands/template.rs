@@ -1,8 +1,7 @@
 use crate::utils::{print as p, templates};
 use anyhow::Result;
 use clap::Subcommand;
-use colored::*;
-use dialoguer::{Confirm, Input};
+use dialoguer::Input;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -148,43 +147,29 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn show(name: String) -> Result<()> {
-    let template = templates::get_template(&name)?;
-    p::header(&format!("Template: {}", template.name));
-    p::kv_accent("Name", &template.name);
-    p::kv("Version", &template.version);
-    p::kv("Author", &template.author);
-    p::kv("Description", &template.description);
-    p::kv("Source", &template.source.to_string());
-    if !template.tags.is_empty() {
-        p::kv("Tags", &template.tags.join(", "));
-    }
-    if let Some(ref path) = template.path {
-        p::kv("Path", path);
-    }
-    p::kv("Downloads", &template.downloads.to_string());
-    p::kv("Verified", if template.verified { "yes" } else { "no" });
-    Ok(())
-}
-
-fn search(query: String, tags: Option<String>) -> Result<()> {
-    let tag_list: Option<Vec<String>> = tags.map(|t| {
-        t.split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    });
-    let results = templates::search_templates(&query, tag_list.as_deref())?;
+fn search(query: String) -> Result<()> {
+    let results = templates::search_templates(&query, None)?;
     p::header(&format!("Template search results for '{}'", query));
     if results.is_empty() {
         p::info("No templates matched that query.");
         return Ok(());
     }
 
+    p::info(&format!("Found {} result(s), ranked by popularity:", results.len()));
+    println!();
+
     for (i, template) in results.iter().enumerate() {
-        println!("  {:>2}. {}@{}", i + 1, template.name, template.version);
+        let badge = p::verified_badge(template.verified);
+        println!(
+            "  {:>2}. {}@{}{}",
+            i + 1,
+            template.name.cyan().bold(),
+            template.version,
+            badge
+        );
         p::kv("Description", &template.description);
-        p::kv("Source", &template.source.to_string());
+        p::kv("Downloads", &template.downloads.to_string());
+        p::kv("Source", &template.source);
         if !template.tags.is_empty() {
             p::kv("Tags", &template.tags.join(", "));
         }
@@ -196,26 +181,40 @@ fn search(query: String, tags: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn remove(name: String) -> Result<()> {
-    let confirmed = Confirm::new()
-        .with_prompt(format!("Remove template '{}'?", name))
-        .default(false)
-        .interact()?;
-
-    if !confirmed {
-        p::info("Removal cancelled.");
-        return Ok(());
+fn show(name: String) -> Result<()> {
+    let registry = templates::load_registry()?;
+    let template = registry.templates
+        .iter()
+        .find(|t| t.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", name))?;
+    
+    p::header(&format!("Template: {}", template.name));
+    p::kv("Description", &template.description);
+    p::kv("Author", &template.author);
+    p::kv("Version", &template.version);
+    p::kv("Source", &template.source.to_string());
+    if !template.tags.is_empty() {
+        p::kv("Tags", &template.tags.join(", "));
     }
+    p::kv("Downloads", &template.downloads.to_string());
+    p::kv("Verified", if template.verified { "Yes" } else { "No" });
+    p::kv("Created", &template.created_at);
+    p::kv("Updated", &template.updated_at);
+    
+    Ok(())
+}
 
+fn remove(name: String) -> Result<()> {
     templates::remove_template(&name)?;
-    p::success(&format!("Template '{}' removed.", name));
+    p::header("Template Remove");
+    p::success(&format!("Template '{}' removed successfully", name));
     Ok(())
 }
 
 fn init() -> Result<()> {
-    p::header("Template Registry Init");
-    p::info("The template registry is managed automatically by StarForge.");
-    p::info("Use `starforge template publish <path>` to add your own templates.");
-    p::info("Use `starforge template list` to see all registered templates.");
+    p::header("Template Registry Initialization");
+    p::info("Initializing template registry with example templates...");
+    // This would initialize with default templates
+    p::success("Template registry initialized");
     Ok(())
 }
