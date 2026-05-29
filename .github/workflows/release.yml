@@ -21,13 +21,19 @@ jobs:
           mkdir -p dist
           cp target/release/starforge dist/starforge
           tar -czf dist/starforge-linux-x86_64.tar.gz -C dist starforge
+          cd dist
+          sha256sum starforge-linux-x86_64.tar.gz > checksums.txt
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: starforge-linux-x86_64
-          path: dist/starforge-linux-x86_64.tar.gz
+          path: |
+            dist/starforge-linux-x86_64.tar.gz
+            dist/checksums.txt
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/starforge-linux-x86_64.tar.gz
+          files: |
+            dist/starforge-linux-x86_64.tar.gz
+            dist/checksums.txt
 
