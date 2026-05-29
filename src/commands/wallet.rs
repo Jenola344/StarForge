@@ -91,6 +91,24 @@ pub enum WalletCommands {
     },
     /// Rename a wallet
     Rename { old_name: String, new_name: String },
+    /// Close a source account and send remaining XLM to a destination (account merge)
+    Merge {
+        /// Source wallet to close (must be saved in StarForge)
+        #[arg(long)]
+        from: String,
+        /// Destination public key or wallet name that receives the balance
+        #[arg(long)]
+        to: String,
+        /// Network to use (defaults to the source wallet's network)
+        #[arg(long, value_parser = ["testnet", "mainnet"])]
+        network: Option<String>,
+        /// Skip the confirmation prompt
+        #[arg(long, default_value = "false")]
+        yes: bool,
+        /// Remove the source wallet from local storage after a successful merge
+        #[arg(long, default_value = "false")]
+        remove_local: bool,
+    },
     /// Rotate a wallet in place while keeping the same logical name
     Rotate {
         /// Wallet name to rotate
@@ -235,6 +253,13 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
         WalletCommands::Fund { name } => fund_wallet(name),
         WalletCommands::Remove { name } => remove(name),
         WalletCommands::Rename { old_name, new_name } => rename(old_name, new_name),
+        WalletCommands::Merge {
+            from,
+            to,
+            network,
+            yes,
+            remove_local,
+        } => merge_wallet(from, to, network, yes, remove_local),
         WalletCommands::Rotate {
             name,
             fund,
@@ -625,6 +650,227 @@ fn remove(name: String) -> Result<()> {
     p::success(&format!("Wallet '{}' removed", name));
     Ok(())
 }
+fn resolve_merge_destination(to: &str, cfg: &config::Config) -> Result<String> {
+    if to.starts_with('G') {
+        config::validate_public_key(to)?;
+        return Ok(to.to_string());
+    }
+
+    config::validate_wallet_name(to)?;
+    cfg.wallets
+        .iter()
+        .find(|w| w.name == to)
+        .map(|w| w.public_key.clone())
+        .ok_or_else(|| anyhow::anyhow!("Destination wallet '{}' not found", to))
+}
+
+fn wallet_secret_key(wallet: &config::WalletEntry) -> Result<String> {
+    let sk = wallet
+        .secret_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Wallet '{}' has no secret key stored", wallet.name))?;
+
+    if sk.contains(':') {
+        let pwd = crypto::prompt_password(
+            &format!("Enter password to decrypt wallet '{}'", wallet.name),
+            false,
+        )?;
+        crypto::decrypt_secret(&pwd, sk)
+            .map_err(|_| anyhow::anyhow!("Incorrect password or unable to decrypt."))
+    } else {
+        Ok(sk.clone())
+    }
+}
+
+fn validate_account_mergeable(account: &horizon::AccountResponse) -> Result<()> {
+    for balance in &account.balances {
+        if balance.asset_type == "native" {
+            continue;
+        }
+        let amount: f64 = balance.balance.parse().unwrap_or(0.0);
+        if amount > 0.0 {
+            let label = balance.asset_code.as_deref().unwrap_or(&balance.asset_type);
+            anyhow::bail!(
+                "Cannot merge: account still holds {} {}. Remove trustlines and balances first.",
+                balance.balance,
+                label
+            );
+        }
+    }
+
+    if account.subentry_count > 0 {
+        anyhow::bail!(
+            "Cannot merge: account has {} subentries (trustlines, signers, data, etc.). \
+             Remove them before merging.",
+            account.subentry_count
+        );
+    }
+
+    Ok(())
+}
+
+fn native_xlm_balance(account: &horizon::AccountResponse) -> f64 {
+    account
+        .balances
+        .iter()
+        .find(|b| b.asset_type == "native")
+        .and_then(|b| b.balance.parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
+
+fn merge_wallet(
+    from: String,
+    to: String,
+    network_override: Option<String>,
+    skip_confirm: bool,
+    remove_local: bool,
+) -> Result<()> {
+    config::validate_wallet_name(&from)?;
+
+    let cfg = config::load()?;
+    let wallet = cfg.wallets.iter().find(|w| w.name == from).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Wallet '{}' not found in StarForge. Run `starforge wallet list`",
+            from
+        )
+    })?;
+
+    let network = network_override
+        .clone()
+        .unwrap_or_else(|| wallet.network.clone());
+    config::validate_network(&network)?;
+
+    let destination = resolve_merge_destination(&to, &cfg)?;
+
+    if wallet.public_key == destination {
+        anyhow::bail!("Source and destination accounts must be different");
+    }
+
+    p::header("Account Merge");
+    p::warn("This permanently closes the source account on-chain. This cannot be undone.");
+    p::separator();
+    p::kv("Source Wallet", &wallet.name);
+    p::kv("Source Address", &wallet.public_key);
+    p::kv("Destination", &destination);
+    p::kv("Network", &network);
+
+    if network == "mainnet" {
+        p::warn("You are merging on MAINNET. All remaining XLM will move to the destination.");
+    }
+
+    p::separator();
+    println!();
+    p::step(1, 3, "Fetching source account…");
+    let source_account = horizon::fetch_account(&wallet.public_key, &network).map_err(|e| {
+        anyhow::anyhow!(
+            "Source account not found on {}: {}\nIt may already be merged or never funded.",
+            network,
+            e
+        )
+    })?;
+
+    validate_account_mergeable(&source_account)?;
+    let xlm_balance = native_xlm_balance(&source_account);
+    p::kv(
+        "XLM to Transfer",
+        &format!("{:.7} XLM (minus fee)", xlm_balance),
+    );
+
+    if xlm_balance <= 0.00001 {
+        anyhow::bail!("Source account has insufficient XLM to cover transaction fees");
+    }
+
+    p::step(2, 3, "Validating destination account…");
+    horizon::fetch_account(&destination, &network).map_err(|_| {
+        anyhow::anyhow!(
+            "Destination account does not exist on {}. \
+             The destination must be funded before it can receive a merge.",
+            network
+        )
+    })?;
+    p::kv("Destination", "✓ Account exists");
+
+    p::step(3, 3, "Building account merge transaction…");
+    let tx_result = horizon::build_and_simulate_account_merge(
+        &wallet.public_key,
+        &destination,
+        &source_account.sequence,
+        &network,
+    )?;
+
+    p::kv(
+        "Estimated Fee",
+        &format!("{:.7} XLM", tx_result.fee as f64 / 10_000_000.0),
+    );
+
+    if !skip_confirm {
+        println!();
+        p::warn(&format!(
+            "Account '{}' ({}) will be closed and remaining XLM sent to {}.",
+            wallet.name, wallet.public_key, destination
+        ));
+        print!(
+            "  Type the source wallet name ({}) to confirm merge: ",
+            wallet.name
+        );
+        use std::io::BufRead;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
+        if line.trim() != wallet.name {
+            p::info("Account merge cancelled.");
+            return Ok(());
+        }
+    }
+
+    println!();
+    let secret_key = wallet_secret_key(wallet)?;
+    p::info("Submitting account merge…");
+    let submit_result =
+        horizon::submit_payment_transaction(&tx_result.transaction_xdr, &secret_key, &network)?;
+
+    println!();
+    p::separator();
+    println!(
+        "  {} {}",
+        "✓".green().bold(),
+        "Account merge submitted successfully!".bright_white()
+    );
+    println!();
+    p::kv_accent("Transaction Hash", &submit_result.hash);
+
+    let explorer_base = if network == "mainnet" {
+        "https://stellar.expert/explorer/public/tx"
+    } else {
+        "https://stellar.expert/explorer/testnet/tx"
+    };
+    p::kv(
+        "Stellar Expert",
+        &format!("{}/{}", explorer_base, submit_result.hash),
+    );
+    p::separator();
+
+    if remove_local {
+        let mut cfg = config::load()?;
+        let before = cfg.wallets.len();
+        cfg.wallets.retain(|w| w.name != from);
+        if cfg.wallets.len() < before {
+            config::save(&cfg)?;
+            p::success(&format!("Removed wallet '{}' from local storage", from));
+        }
+    } else {
+        p::info(&format!(
+            "Local wallet '{}' is still saved. Remove it with: {}",
+            from,
+            format!("starforge wallet remove {}", from).cyan()
+        ));
+    }
+
+    Ok(())
+}
+
 fn rename(old_name: String, new_name: String) -> Result<()> {
     config::validate_wallet_name(&old_name)?;
     config::validate_wallet_name(&new_name)?;
