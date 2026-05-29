@@ -4,6 +4,7 @@ use clap::Subcommand;
 use colored::*;
 use dialoguer::{Confirm, Input};
 use std::path::PathBuf;
+use colored::Colorize;
 
 #[derive(Subcommand)]
 pub enum TemplateCommands {
@@ -14,6 +15,9 @@ pub enum TemplateCommands {
         /// Filter by tags (comma-separated)
         #[arg(long)]
         tags: Option<String>,
+        /// Force refresh of remote registry, ignoring cached copy
+        #[arg(long)]
+        refresh: bool,
     },
     /// List all available templates
     List,
@@ -57,7 +61,7 @@ pub fn handle(cmd: TemplateCommands) -> Result<()> {
             publish(path, name, description, author, tags, version)
         }
         TemplateCommands::List => list(),
-        TemplateCommands::Search { query, tags } => search(query, tags),
+        TemplateCommands::Search { query, tags, refresh } => search(query, tags, refresh),
         TemplateCommands::Show { name } => show(name),
         TemplateCommands::Remove { name } => remove(name),
         TemplateCommands::Init => init(),
@@ -142,6 +146,21 @@ fn list() -> Result<()> {
     Ok(())
 }
 
+fn search(query: String, tags: Option<String>, refresh: bool) -> Result<()> {
+    // Determine tags filter if provided (comma-separated)
+    let tag_vec: Option<Vec<String>> = tags.as_ref().map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
+
+    // Load registry, optionally forcing a refresh
+    let results = if refresh {
+        // Temporarily set env var to force refresh
+        std::env::set_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH", "1");
+        let res = templates::search_templates(&query, tag_vec.as_ref().map(|v| &v[..]));
+        std::env::remove_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH");
+        res?
+    } else {
+        templates::search_templates(&query, tag_vec.as_ref().map(|v| &v[..]))?
+    };
+
 fn search(query: String, tags: Option<String>) -> Result<()> {
     let tag_list: Option<Vec<String>> = tags.map(|t| {
         t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
@@ -156,6 +175,8 @@ fn search(query: String, tags: Option<String>) -> Result<()> {
     for (i, template) in results.iter().enumerate() {
         println!("  {:>2}. {}@{}", i + 1, template.name, template.version);
         p::kv("Description", &template.description);
+        p::kv("Downloads", &template.downloads.to_string());
+        p::kv("Source", &template.source.to_string());
         p::kv("Source", &template.source);
         if !template.tags.is_empty() {
             p::kv("Tags", &template.tags.join(", "));

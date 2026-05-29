@@ -115,6 +115,30 @@ pub struct TransactionRecord {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FeeStats {
+    #[serde(rename = "low_fee")]
+    pub low_fee: String,
+    #[serde(rename = "mode_fee")]
+    pub mode_fee: String,
+    #[serde(rename = "high_fee")]
+    pub high_fee: String,
+}
+
+pub fn fetch_fee_stats(network: &str) -> Result<FeeStats> {
+    let horizon = horizon_url(network)?;
+    let url = format!("{}/fee_stats", horizon);
+    let res = ureq::get(&url)
+        .call()
+        .with_context(|| format!("Failed to fetch fee stats from {}", network))?;
+    if res.status() == 200 {
+        let stats: FeeStats = res.into_json().with_context(|| "Failed to parse fee stats response")?;
+        Ok(stats)
+    } else {
+        anyhow::bail!("Failed to get fee stats: HTTP {}", res.status())
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct TransactionsResponse {
     #[serde(rename = "_embedded")]
     embedded: TransactionsEmbedded,

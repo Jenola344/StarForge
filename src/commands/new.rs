@@ -70,6 +70,9 @@ pub fn handle(cmd: NewCommands) -> Result<()> {
 fn search_templates(query: &str) -> Result<()> {
     let results = templates::search_templates(query, None)?;
     p::header(&format!("Template search results for '{}'", query));
+
+
+
     if results.is_empty() {
         p::info("No templates matched that query.");
         return Ok(());
@@ -256,6 +259,11 @@ fn scaffold_dapp(name: String) -> Result<()> {
     fs::write(dir.join("package.json"), dapp_package(&name))?;
 
     p::step(3, 3, "Writing app scaffold…");
+    fs::write(dir.join("index.html"), dapp_index(&name))?;
+    fs::write(dir.join("src/main.jsx"), dapp_main(typescript, wallet_kit))?;
+    fs::write(dir.join("src/App.jsx"), dapp_app(&name))?;
+    fs::write(dir.join(".gitignore"), "node_modules/\ndist/\n")?;
+    fs::write(dir.join("README.md"), dapp_readme(&name))?;
     fs::write(dir.join("index.html"),     dapp_index(&name))?;
     fs::write(dir.join("src/main.jsx"),   dapp_main())?;
     fs::write(dir.join("src/App.jsx"),    dapp_app(&name))?;
@@ -743,6 +751,24 @@ mod test {{
 
 // ── dApp scaffold files ───────────────────────────────────────────────────────
 
+fn dapp_package(name: &str, typescript: bool, wallet_kit: bool) -> String {
+    let env_block = if wallet_kit {
+        "    \"VITE_NETWORK\": \"testnet\"\n"
+    } else {
+        "    \"VITE_NETWORK\": \"testnet\"\n"
+    };
+    let wallet_deps = if wallet_kit {
+        "\n    \"@creit.tech/stellar-wallets-kit\": \"^0.1.0\","
+    } else {
+        ""
+    };
+    let ts_deps = if typescript {
+        ",\n    \"typescript\": \"^5.0.0\""
+    } else {
+        ""
+    };
+    format!(
+        r#"{{
 fn dapp_package(name: &str) -> String {
     format!(r#"{{
   "name": "{name}",
@@ -782,6 +808,32 @@ fn dapp_index(name: &str) -> String {
 "#)
 }
 
+fn dapp_tsconfig() -> String {
+    r#"{"compilerOptions": {"target": "es2020", "module": "esnext", "moduleResolution": "node", "esModuleInterop": true}}"#.to_string()
+}
+
+fn dapp_tsconfig_node() -> String {
+    r#"{"extends": "./tsconfig.json", "compilerOptions": {"module": "commonjs", "target": "es2020", "moduleResolution": "node", "esModuleInterop": true}}"#.to_string()
+}
+
+fn dapp_vite_env_types(wallet_kit: bool) -> String {
+    if wallet_kit {
+        r#"interface ImportMetaEnv { VITE_NETWORK: string; VITE_WALLET_KIT: boolean; }"#.to_string()
+    } else {
+        r#"interface ImportMetaEnv { VITE_NETWORK: string; }"#.to_string()
+    }
+}
+
+fn dapp_main(typescript: bool, wallet_kit: bool) -> String {
+    let app_import = if typescript { "./App.tsx" } else { "./App.jsx" };
+    let root_el = if typescript {
+        "document.getElementById('root')!"
+    } else {
+        "document.getElementById('root')"
+    };
+
+    let mut out = format!(
+        r#"import React from 'react'
 fn dapp_main() -> &'static str {
     r#"import React from 'react'
 import ReactDOM from 'react-dom/client'
@@ -810,6 +862,7 @@ export default function App() {{
 fn dapp_readme(name: &str) -> String {
     format!(r#"# {name}
 
+A Stellar dApp scaffolded with [starforge](https://github.com/stellar/starforge).
 A Stellar dApp scaffolded with [starforge](https://github.com/YOUR_USERNAME/starforge).
 
 ## Getting Started
@@ -824,7 +877,7 @@ npm run dev
 fn readme(name: &str, template: &str, source: &str) -> String {
     format!(r#"# {name}
 
-A Soroban smart contract scaffolded with [starforge](https://github.com/YOUR_USERNAME/starforge).
+A Soroban smart contract scaffolded with [starforge](https://github.com/stellar/starforge).
 
 ## Build
 
