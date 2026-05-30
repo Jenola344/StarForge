@@ -115,6 +115,30 @@ pub struct TransactionRecord {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FeeStats {
+    #[serde(rename = "low_fee")]
+    pub low_fee: String,
+    #[serde(rename = "mode_fee")]
+    pub mode_fee: String,
+    #[serde(rename = "high_fee")]
+    pub high_fee: String,
+}
+
+pub fn fetch_fee_stats(network: &str) -> Result<FeeStats> {
+    let horizon = horizon_url(network)?;
+    let url = format!("{}/fee_stats", horizon);
+    let res = ureq::get(&url)
+        .call()
+        .with_context(|| format!("Failed to fetch fee stats from {}", network))?;
+    if res.status() == 200 {
+        let stats: FeeStats = res.into_json().with_context(|| "Failed to parse fee stats response")?;
+        Ok(stats)
+    } else {
+        anyhow::bail!("Failed to get fee stats: HTTP {}", res.status())
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct TransactionsResponse {
     #[serde(rename = "_embedded")]
     embedded: TransactionsEmbedded,
@@ -147,6 +171,8 @@ pub fn fetch_transactions(
         TxFilter {
             limit,
             cursor: None,
+            order: None,
+            type_filter: None,
             after: None,
             before: None,
             successful_only: None,
@@ -392,10 +418,7 @@ fn build_batch_transaction_xdr(
         anyhow::bail!("Batch transaction requires at least one operation");
     }
 
-    let _network_passphrase = match network {
-        "mainnet" => "Public Global Stellar Network ; September 2015",
-        _ => "Test SDF Network ; September 2015",
-    };
+    let _network_passphrase = config::get_network_passphrase(network);
 
     let op_parts: Vec<String> = operations
         .iter()
@@ -442,11 +465,8 @@ fn build_account_merge_transaction_xdr(
     Ok(general_purpose::STANDARD.encode(mock_xdr))
 }
 
-fn network_passphrase(network: &str) -> &'static str {
-    match network {
-        "mainnet" => "Public Global Stellar Network ; September 2015",
-        _ => "Test SDF Network ; September 2015",
-    }
+fn network_passphrase(network: &str) -> String {
+    config::get_network_passphrase(network)
 }
 
 fn build_payment_transaction_xdr(
@@ -485,10 +505,7 @@ fn sign_transaction_xdr(transaction_xdr: &str, secret_key: &str, network: &str) 
     // This is a simplified mock implementation
     // In production, you'd use stellar-xdr and ed25519 signing
 
-    let _network_passphrase = match network {
-        "mainnet" => "Public Global Stellar Network ; September 2015",
-        _ => "Test SDF Network ; September 2015",
-    };
+    let _network_passphrase = config::get_network_passphrase(network);
 
     // Mock signing - in reality this would involve:
     // 1. Decode the transaction XDR

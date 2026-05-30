@@ -3,6 +3,7 @@ use clap::{Args, Subcommand};
 use colored::*;
 
 use crate::utils::{config, crypto, horizon, print as p, tx_batch};
+use crate::utils::horizon::FeeStats; // Import FeeStats
 
 #[derive(Args)]
 pub struct TxArgs {
@@ -17,30 +18,12 @@ pub enum TxCommands {
     /// Submit multiple operations in one transaction from a JSON file
     Batch(BatchArgs),
     /// Fetch and display recent transactions for a Stellar account
-    History {
-        /// Account public key
-        public_key: String,
-        /// Number of transactions to fetch (max 200)
-        #[arg(short, long, default_value_t = 10)]
-        limit: u8,
-        /// Network to use
+    History(HistoryArgs),
+    /// Show recommended fee levels based on Horizon fee stats
+    Fees {
+        /// Optional network (testnet/mainnet)
         #[arg(short, long)]
         network: Option<String>,
-        /// Pagination cursor (paging_token from previous result)
-        #[arg(long)]
-        cursor: Option<String>,
-        /// Filter: only show transactions after this date (ISO 8601, e.g. 2024-01-01)
-        #[arg(long)]
-        after: Option<String>,
-        /// Filter: only show transactions before this date (ISO 8601, e.g. 2024-12-31)
-        #[arg(long)]
-        before: Option<String>,
-        /// Filter: only show successful transactions
-        #[arg(long)]
-        successful: bool,
-        /// Show full transaction details including memo
-        #[arg(long)]
-        details: bool,
     },
 }
 
@@ -82,29 +65,39 @@ pub struct SendArgs {
     pub yes: bool,
 }
 
+#[derive(Args)]
+pub struct HistoryArgs {
+    /// Public key to fetch history for
+    pub public_key: String,
+    /// Limit number of transactions
+    #[arg(long, default_value = "10")]
+    pub limit: u8,
+    /// Optional network (testnet/mainnet)
+    #[arg(long)]
+    pub network_override: Option<String>,
+    /// Cursor for pagination
+    #[arg(long)]
+    pub cursor: Option<String>,
+    /// Get transactions after cursor
+    #[arg(long)]
+    pub after: Option<String>,
+    /// Get transactions before cursor
+    #[arg(long)]
+    pub before: Option<String>,
+    /// Only successful transactions
+    #[arg(long)]
+    pub successful_only: bool,
+    /// Include details
+    #[arg(long)]
+    pub details: bool,
+}
+
 pub fn handle(args: TxArgs) -> Result<()> {
     match args.command {
+        TxCommands::Fees { network } => handle_fees(network),
         TxCommands::Send(args) => handle_send(args),
         TxCommands::Batch(args) => handle_batch(args),
-        TxCommands::History {
-            public_key,
-            limit,
-            network,
-            cursor,
-            after,
-            before,
-            successful,
-            details,
-        } => handle_history(HistoryArgs {
-            public_key,
-            limit,
-            network_override: network,
-            cursor,
-            after,
-            before,
-            successful_only: successful,
-            details,
-        }),
+        TxCommands::History(args) => handle_history(args),
     }
 }
 
@@ -458,16 +451,7 @@ fn parse_asset(asset: &str) -> Result<(Option<String>, Option<String>)> {
     }
 }
 
-struct HistoryArgs {
-    public_key: String,
-    limit: u8,
-    network_override: Option<String>,
-    cursor: Option<String>,
-    after: Option<String>,
-    before: Option<String>,
-    successful_only: bool,
-    details: bool,
-}
+
 
 fn handle_history(args: HistoryArgs) -> Result<()> {
     let limit = args.limit.min(200);
@@ -521,6 +505,8 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
         cursor: args.cursor,
         after: args.after,
         before: args.before,
+        order: None,
+        type_filter: None,
         successful_only: if args.successful_only {
             Some(true)
         } else {
@@ -543,6 +529,22 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn handle_fees(network_opt: Option<String>) -> Result<()> {
+    // Determine the network, default to config or testnet
+    let network = match network_opt {
+        Some(net) => net,
+        None => config::load()?.network,
+    };
+    config::validate_network(&network)?;
+    let stats: FeeStats = horizon::fetch_fee_stats(&network)?;
+    p::header("Recommended Fee Levels");
+    p::kv("Network", &network);
+    p::kv("Low Fee (stroops)", &stats.low_fee);
+    p::kv("Medium Fee (stroops)", &stats.mode_fee);
+    p::kv("High Fee (stroops)", &stats.high_fee);
     Ok(())
 }
 
