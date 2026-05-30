@@ -15,7 +15,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 1240,
-      "verified": true
+      "verified": true,
+      "documented": true,
+      "maintenance": "active"
     },
     {
       "name": "lending-pool",
@@ -31,7 +33,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 874,
-      "verified": true
+      "verified": true,
+      "documented": true,
+      "maintenance": "active"
     },
     {
       "name": "governance",
@@ -47,7 +51,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 512,
-      "verified": false
+      "verified": false,
+      "documented": true,
+      "maintenance": "maintained"
     },
     {
       "name": "multisig-wallet",
@@ -63,7 +69,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 389,
-      "verified": false
+      "verified": false,
+      "documented": false,
+      "maintenance": "maintained"
     },
     {
       "name": "sep-41-token",
@@ -79,7 +87,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 156,
-      "verified": true
+      "verified": true,
+      "documented": true,
+      "maintenance": "active"
     },
     {
       "name": "sep-10-auth",
@@ -95,7 +105,9 @@
       "created_at": "2025-01-01T00:00:00Z",
       "updated_at": "2025-01-01T00:00:00Z",
       "downloads": 98,
-      "verified": true
+      "verified": true,
+      "documented": false,
+      "maintenance": "maintained"
     }
   ]
 }

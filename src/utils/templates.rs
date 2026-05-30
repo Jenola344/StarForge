@@ -41,6 +41,36 @@ impl std::fmt::Display for TemplateSource {
     }
 }
 
+/// Maintenance state of a marketplace template.
+///
+/// Surfaced to users as a lightweight trust signal so they can tell at a
+/// glance whether a template is being kept up to date or has been abandoned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MaintenanceStatus {
+    /// Updated recently and accepting changes.
+    Active,
+    /// Stable and still supported, but not under active development.
+    Maintained,
+    /// No longer maintained; use with caution.
+    Deprecated,
+    /// Maintenance state has not been declared.
+    #[default]
+    Unknown,
+}
+
+impl MaintenanceStatus {
+    /// Short human-readable label used in trust indicators.
+    pub fn label(&self) -> &'static str {
+        match self {
+            MaintenanceStatus::Active => "Actively maintained",
+            MaintenanceStatus::Maintained => "Maintained",
+            MaintenanceStatus::Deprecated => "Deprecated",
+            MaintenanceStatus::Unknown => "Unknown maintenance",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
@@ -61,6 +91,72 @@ pub struct TemplateEntry {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: String,
+    /// Whether the template ships user-facing documentation (e.g. a README).
+    #[serde(default)]
+    pub documented: bool,
+    /// Declared maintenance state of the template.
+    #[serde(default)]
+    pub maintenance: MaintenanceStatus,
+}
+
+impl TemplateEntry {
+    /// Compute a 0-100 quality/trust score from the available signals.
+    ///
+    /// The score blends verification status, documentation, usage (downloads)
+    /// and maintenance state so that dependable templates rank higher and are
+    /// easier to discover in a growing community catalog.
+    pub fn quality_score(&self) -> u8 {
+        let mut score: i32 = 0;
+
+        // Verified templates have been vetted — the strongest trust signal.
+        if self.verified {
+            score += 40;
+        }
+
+        // Documentation makes a template far easier to adopt.
+        if self.documented {
+            score += 20;
+        }
+
+        // Usage is a proxy for community confidence (capped so a single
+        // wildly-popular template cannot dominate the ranking).
+        score += (self.downloads / 50).min(30) as i32;
+
+        // Maintenance state rewards living projects and penalizes dead ones.
+        score += match self.maintenance {
+            MaintenanceStatus::Active => 10,
+            MaintenanceStatus::Maintained => 5,
+            MaintenanceStatus::Deprecated => -25,
+            MaintenanceStatus::Unknown => 0,
+        };
+
+        score.clamp(0, 100) as u8
+    }
+
+    /// Human-readable trust/quality badges suitable for display to users.
+    pub fn trust_indicators(&self) -> Vec<String> {
+        let mut badges = Vec::new();
+
+        if self.verified {
+            badges.push("✓ Verified".to_string());
+        }
+        if self.documented {
+            badges.push("📖 Documented".to_string());
+        }
+
+        match self.maintenance {
+            MaintenanceStatus::Active => badges.push("🟢 Actively maintained".to_string()),
+            MaintenanceStatus::Maintained => badges.push("🟡 Maintained".to_string()),
+            MaintenanceStatus::Deprecated => badges.push("⚠ Deprecated".to_string()),
+            MaintenanceStatus::Unknown => {}
+        }
+
+        if self.downloads >= 1000 {
+            badges.push(format!("★ Popular ({} downloads)", self.downloads));
+        }
+
+        badges
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -277,13 +373,13 @@ pub fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Vec<Temp
         })
         .collect();
     
-    // Sort by downloads (popularity) and verified status
+    // Rank by overall quality score (verification, documentation, usage and
+    // maintenance), falling back to raw downloads to break ties. This surfaces
+    // trusted, well-documented and well-maintained templates more clearly.
     results.sort_by(|a, b| {
-        match (a.verified, b.verified) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => b.downloads.cmp(&a.downloads),
-        }
+        b.quality_score()
+            .cmp(&a.quality_score())
+            .then_with(|| b.downloads.cmp(&a.downloads))
     });
     
     Ok(results)
@@ -607,6 +703,8 @@ pub fn publish_template(
         verified: false,
         created_at: String::new(),
         updated_at: String::new(),
+        documented: template_path.join("README.md").exists(),
+        maintenance: MaintenanceStatus::Active,
     };
 
     add_template(entry)?;
@@ -653,6 +751,8 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
             downloads: 100,
             verified: true,
+            documented: true,
+            maintenance: MaintenanceStatus::Active,
         });
         
         // Test name search
@@ -688,6 +788,8 @@ mod tests {
             verified: false,
             created_at: String::new(),
             updated_at: String::new(),
+            documented: false,
+            maintenance: MaintenanceStatus::Unknown,
         };
 
         // When the dest already exists, fetch_template_cached returns it without re-cloning.
@@ -712,6 +814,69 @@ mod tests {
         // With force_refresh = true, the old directory should be removed.
         std::fs::remove_dir_all(&cache_dir).unwrap();
         assert!(!cache_dir.exists(), "old cache dir should be gone after force_refresh");
+    }
+
+    fn sample_entry() -> TemplateEntry {
+        TemplateEntry {
+            name: "sample".to_string(),
+            version: "1.0.0".to_string(),
+            description: String::new(),
+            author: String::new(),
+            tags: vec![],
+            source: String::new(),
+            path: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            downloads: 0,
+            verified: false,
+            documented: false,
+            maintenance: MaintenanceStatus::Unknown,
+        }
+    }
+
+    #[test]
+    fn quality_score_rewards_trust_signals() {
+        let bare = sample_entry();
+        assert_eq!(bare.quality_score(), 0);
+
+        let mut trusted = sample_entry();
+        trusted.verified = true;
+        trusted.documented = true;
+        trusted.maintenance = MaintenanceStatus::Active;
+        trusted.downloads = 2000;
+        // 40 (verified) + 20 (documented) + 30 (downloads cap) + 10 (active)
+        assert_eq!(trusted.quality_score(), 100);
+
+        let mut deprecated = sample_entry();
+        deprecated.maintenance = MaintenanceStatus::Deprecated;
+        // Penalty is clamped at 0, never negative.
+        assert_eq!(deprecated.quality_score(), 0);
+    }
+
+    #[test]
+    fn quality_score_ranks_verified_above_unverified() {
+        let mut verified = sample_entry();
+        verified.verified = true;
+
+        let mut popular = sample_entry();
+        popular.downloads = 500; // capped contribution of 10
+
+        assert!(verified.quality_score() > popular.quality_score());
+    }
+
+    #[test]
+    fn trust_indicators_reflect_metadata() {
+        let mut entry = sample_entry();
+        entry.verified = true;
+        entry.documented = true;
+        entry.maintenance = MaintenanceStatus::Deprecated;
+        entry.downloads = 1500;
+
+        let badges = entry.trust_indicators();
+        assert!(badges.iter().any(|b| b.contains("Verified")));
+        assert!(badges.iter().any(|b| b.contains("Documented")));
+        assert!(badges.iter().any(|b| b.contains("Deprecated")));
+        assert!(badges.iter().any(|b| b.contains("Popular")));
     }
 
     #[test]

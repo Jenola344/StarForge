@@ -129,7 +129,20 @@ fn list() -> Result<()> {
     }
 
     for (i, template) in registry.templates.iter().enumerate() {
-        println!("  {:>2}. {}@{}", i + 1, template.name, template.version);
+        let badges = template.trust_indicators();
+        let badge_suffix = if badges.is_empty() {
+            String::new()
+        } else {
+            format!("  {}", badges.join("  "))
+        };
+        println!(
+            "  {:>2}. {}@{}  [quality {}/100]{}",
+            i + 1,
+            template.name,
+            template.version,
+            template.quality_score(),
+            badge_suffix
+        );
         p::kv("Description", &template.description);
         p::kv("Source", &template.source);
         if !template.tags.is_empty() {
@@ -173,10 +186,23 @@ fn search(query: String, tags: Option<String>) -> Result<()> {
     }
 
     for (i, template) in results.iter().enumerate() {
-        println!("  {:>2}. {}@{}", i + 1, template.name, template.version);
+        let badges = template.trust_indicators();
+        let badge_suffix = if badges.is_empty() {
+            String::new()
+        } else {
+            format!("  {}", badges.join("  "))
+        };
+        println!(
+            "  {:>2}. {}@{}  [quality {}/100]{}",
+            i + 1,
+            template.name,
+            template.version,
+            template.quality_score(),
+            badge_suffix
+        );
         p::kv("Description", &template.description);
         p::kv("Downloads", &template.downloads.to_string());
-        p::kv("Source", &template.source.to_string());
+        p::kv("Maintenance", template.maintenance.label());
         p::kv("Source", &template.source);
         if !template.tags.is_empty() {
             p::kv("Tags", &template.tags.join(", "));
@@ -201,7 +227,28 @@ fn show(name: String) -> Result<()> {
     if !template.tags.is_empty() {
         p::kv("Tags", &template.tags.join(", "));
     }
+    print_quality_signals(&template);
     Ok(())
+}
+
+/// Render the quality / trust signals for a template so users can quickly
+/// gauge how dependable it is.
+fn print_quality_signals(template: &templates::TemplateEntry) {
+    p::kv("Quality score", &format!("{}/100", template.quality_score()));
+    p::kv("Maintenance", template.maintenance.label());
+    p::kv(
+        "Documentation",
+        if template.documented {
+            "Available"
+        } else {
+            "Not provided"
+        },
+    );
+    p::kv("Downloads", &template.downloads.to_string());
+    let badges = template.trust_indicators();
+    if !badges.is_empty() {
+        p::kv("Trust signals", &badges.join("  "));
+    }
 }
 
 fn remove(name: String) -> Result<()> {

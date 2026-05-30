@@ -356,6 +356,49 @@ latest version.
 4. `template_source_content` reads `src/lib.rs` from the cached directory and
    returns it to the scaffolding step.
 
+## Quality Signals & Trust Indicators
+
+To help users identify dependable templates in a growing community catalog,
+each template carries lightweight quality metadata that is surfaced across the
+`list`, `search` and `show` commands.
+
+### Metadata fields
+
+| Field         | Meaning                                                        |
+|---------------|----------------------------------------------------------------|
+| `verified`    | Template has been vetted by maintainers                        |
+| `documented`  | Template ships user-facing documentation (e.g. a README)       |
+| `maintenance` | Maintenance state: `active`, `maintained`, `deprecated`, `unknown` |
+| `downloads`   | Usage metadata used as a proxy for community confidence        |
+
+Example registry entry:
+
+```json
+{
+  "name": "uniswap-v2",
+  "version": "1.0.0",
+  "verified": true,
+  "documented": true,
+  "maintenance": "active",
+  "downloads": 1240
+}
+```
+
+### Quality score
+
+Each template is assigned a `0-100` quality score blending the signals above:
+
+- Verified: `+40`
+- Documented: `+20`
+- Usage: up to `+30` (scaled by downloads, capped)
+- Maintenance: `active +10`, `maintained +5`, `deprecated -25`
+
+The score drives ranking in `starforge template search` (highest quality
+first, with raw downloads breaking ties) and is shown alongside trust badges
+such as `✓ Verified`, `📖 Documented`, `🟢 Actively maintained` and
+`★ Popular`. This makes trusted, well-documented and well-maintained templates
+easier to discover.
+
 ## Support
 
 For issues or questions:
