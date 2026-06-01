@@ -2,7 +2,6 @@ use crate::utils::{print as p, templates};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
-use colored::Colorize;
 
 #[derive(Subcommand)]
 pub enum TemplateCommands {
@@ -68,13 +67,33 @@ pub enum TemplateCommands {
 
 pub fn handle(cmd: TemplateCommands) -> Result<()> {
     match cmd {
-        TemplateCommands::Publish { path, name, description, author, tags, version, cli_version_min, cli_version_max } => {
-            publish(path, name, description, author, tags, version, cli_version_min, cli_version_max)
-        }
+        TemplateCommands::Publish {
+            path,
+            name,
+            description,
+            author,
+            tags,
+            version,
+            cli_version_min,
+            cli_version_max,
+        } => publish(
+            path,
+            name,
+            description,
+            author,
+            tags,
+            version,
+            cli_version_min,
+            cli_version_max,
+        ),
         TemplateCommands::List => list(),
-        TemplateCommands::Search { query, tags, verified, min_quality, refresh } => {
-            search(query, tags, verified, min_quality, refresh)
-        }
+        TemplateCommands::Search {
+            query,
+            tags,
+            verified,
+            min_quality,
+            refresh,
+        } => search(query, tags, verified, min_quality, refresh),
         TemplateCommands::Show { name } => show(name),
         TemplateCommands::Remove { name } => remove(name),
         TemplateCommands::Init => init(),
@@ -157,11 +176,21 @@ fn list() -> Result<()> {
     for (i, template) in registry.templates.iter().enumerate() {
         let compat = match check_template_compatibility(template) {
             CompatibilityStatus::Compatible => "✓".to_string(),
-            CompatibilityStatus::TooOld { required_min, .. } => format!("✗ requires >= {}", required_min),
-            CompatibilityStatus::TooNew { required_max, .. } => format!("✗ requires <= {}", required_max),
+            CompatibilityStatus::TooOld { required_min, .. } => {
+                format!("✗ requires >= {}", required_min)
+            }
+            CompatibilityStatus::TooNew { required_max, .. } => {
+                format!("✗ requires <= {}", required_max)
+            }
             CompatibilityStatus::MalformedMetadata { .. } => "⚠ bad metadata".to_string(),
         };
-        println!("  {:>2}. {}@{}  [{}]", i + 1, template.name, template.version, compat);
+        println!(
+            "  {:>2}. {}@{}  [{}]",
+            i + 1,
+            template.name,
+            template.version,
+            compat
+        );
         let badges = template.trust_indicators();
         let badge_suffix = if badges.is_empty() {
             String::new()
@@ -278,7 +307,11 @@ fn search(
         if !result.reasons.is_empty() {
             p::kv(
                 "Matched",
-                &format!("{} (relevance {})", result.reasons.join(", "), result.relevance),
+                &format!(
+                    "{} (relevance {})",
+                    result.reasons.join(", "),
+                    result.relevance
+                ),
             );
         }
         p::kv("Source", &template.source.to_string());
@@ -312,11 +345,23 @@ fn show(name: String) -> Result<()> {
     }
     match check_template_compatibility(&template) {
         CompatibilityStatus::Compatible => p::success("Compatible with this StarForge version"),
-        CompatibilityStatus::TooOld { required_min, running } => {
-            p::warn(&format!("Incompatible: requires >= {} (running {})", required_min, running));
+        CompatibilityStatus::TooOld {
+            required_min,
+            running,
+        } => {
+            p::warn(&format!(
+                "Incompatible: requires >= {} (running {})",
+                required_min, running
+            ));
         }
-        CompatibilityStatus::TooNew { required_max, running } => {
-            p::warn(&format!("Incompatible: requires <= {} (running {})", required_max, running));
+        CompatibilityStatus::TooNew {
+            required_max,
+            running,
+        } => {
+            p::warn(&format!(
+                "Incompatible: requires <= {} (running {})",
+                required_max, running
+            ));
         }
         CompatibilityStatus::MalformedMetadata { reason } => {
             p::warn(&format!("Malformed version metadata: {}", reason));
@@ -329,7 +374,10 @@ fn show(name: String) -> Result<()> {
 /// Render the quality / trust signals for a template so users can quickly
 /// gauge how dependable it is.
 fn print_quality_signals(template: &templates::TemplateEntry) {
-    p::kv("Quality score", &format!("{}/100", template.quality_score()));
+    p::kv(
+        "Quality score",
+        &format!("{}/100", template.quality_score()),
+    );
     p::kv("Maintenance", template.maintenance.label());
     p::kv(
         "Documentation",

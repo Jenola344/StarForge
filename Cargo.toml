@@ -37,6 +37,7 @@ indicatif = "0.17.7"
 libloading = "0.8.1"
 uuid = { version = "1.6.1", features = ["v4"] }
 hidapi = { version = "2.6.5", optional = true }
+trezor-client = { version = "0.1.5", default-features = false, features = ["stellar"], optional = true }
 zxcvbn = "=3.1.0"
 hex = "0.4"
 tracing = "0.1"
@@ -44,9 +45,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"]
 tracing-appender = "0.2"
 bip39 = { version = "2", features = ["rand", "std"] }
 hmac = "0.12"
+rustyline = "14.0.0"
 
 [features]
-hardware-wallet = ["dep:hidapi"]
+hardware-wallet = ["dep:hidapi", "dep:trezor-client"]
 
 [dev-dependencies]
 criterion = "0.5.1"

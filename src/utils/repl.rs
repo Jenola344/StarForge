@@ -1,8 +1,13 @@
 use anyhow::Result;
 use colored::*;
-use std::collections::VecDeque;
+use rustyline::completion::{Completer, Pair};
+use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::validate::Validator;
+use rustyline::{Context, Editor, Helper};
+use std::collections::HashSet;
 use std::fs;
-use std::io::{self, Write};
 use std::path::PathBuf;
 
 pub struct Repl<R>
@@ -18,17 +23,19 @@ pub struct ReplOptions {
     pub history_enabled: bool,
     pub history_path: PathBuf,
     pub max_history_lines: usize,
+    pub completion_candidates: Vec<String>,
 }
 
 impl Default for ReplOptions {
     fn default() -> Self {
         let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         path.push(".starforge");
-        path.push("repl_history");
+        path.push("history");
         Self {
             history_enabled: true,
             history_path: path,
             max_history_lines: 1000,
+            completion_candidates: Vec::new(),
         }
     }
 }
@@ -59,20 +66,20 @@ where
             "(type :help for commands)".dimmed()
         );
 
-        let stdin = io::stdin();
-        let mut buffer = String::new();
-        let mut history = self.load_history()?;
+        let mut editor = Editor::<StarForgeHelper, rustyline::history::DefaultHistory>::new()?;
+        editor.set_helper(Some(StarForgeHelper::new(
+            self.options.completion_candidates.clone(),
+        )));
+        self.load_history(&mut editor)?;
 
         loop {
-            buffer.clear();
-            print!("{}", "> ".bright_green().bold());
-            io::stdout().flush()?;
-
-            if stdin.read_line(&mut buffer)? == 0 {
-                break;
-            }
-
-            let line = buffer.trim();
+            let prompt = format!("{}", "> ".bright_green().bold());
+            let line = match editor.readline(&prompt) {
+                Ok(line) => line.trim().to_string(),
+                Err(ReadlineError::Interrupted) => continue,
+                Err(ReadlineError::Eof) => break,
+                Err(err) => return Err(err.into()),
+            };
             if line.is_empty() {
                 continue;
             }
@@ -85,39 +92,42 @@ where
                 println!("  {}", "Commands:".bold());
                 println!("    :help              Show help");
                 println!("    :quit | :exit      Exit shell");
+                println!("    <TAB>              Complete wallet names and known contract IDs");
                 println!("    fn(arg1, arg2)     Invoke a contract function");
                 continue;
             }
 
-            self.push_history(&mut history, line.to_string());
-            let (function, args) = parse_invocation(line)?;
+            self.push_history(&mut editor, &line)?;
+            let (function, args) = parse_invocation(&line)?;
             match self.runner.run_invocation(&function, &args) {
                 Ok(out) => println!("{}", out),
                 Err(e) => eprintln!("  {} {}", "✗".red().bold(), e),
             }
         }
 
-        self.save_history(&history)?;
+        self.save_history(&mut editor)?;
         Ok(())
     }
 
-    fn load_history(&self) -> Result<VecDeque<String>> {
+    fn load_history(
+        &self,
+        editor: &mut Editor<StarForgeHelper, rustyline::history::DefaultHistory>,
+    ) -> Result<()> {
         if !self.options.history_enabled {
-            return Ok(VecDeque::new());
+            return Ok(());
         }
 
-        let content = match fs::read_to_string(&self.options.history_path) {
-            Ok(content) => content,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(VecDeque::new()),
-            Err(e) => return Err(e.into()),
-        };
-
-        let mut lines: VecDeque<String> = content.lines().map(|l| l.to_string()).collect();
-        trim_history(&mut lines, self.options.max_history_lines);
-        Ok(lines)
+        match editor.load_history(&self.options.history_path) {
+            Ok(()) => Ok(()),
+            Err(ReadlineError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 
-    fn save_history(&self, history: &VecDeque<String>) -> Result<()> {
+    fn save_history(
+        &self,
+        editor: &mut Editor<StarForgeHelper, rustyline::history::DefaultHistory>,
+    ) -> Result<()> {
         if !self.options.history_enabled {
             return Ok(());
         }
@@ -126,31 +136,88 @@ where
             fs::create_dir_all(parent)?;
         }
 
-        let mut out = String::new();
-        for line in history {
-            out.push_str(line);
-            out.push('\n');
-        }
-        fs::write(&self.options.history_path, out)?;
+        editor.save_history(&self.options.history_path)?;
+        trim_history_file(&self.options.history_path, self.options.max_history_lines)?;
         Ok(())
     }
 
-    fn push_history(&self, history: &mut VecDeque<String>, line: String) {
+    fn push_history(
+        &self,
+        editor: &mut Editor<StarForgeHelper, rustyline::history::DefaultHistory>,
+        line: &str,
+    ) -> Result<()> {
         if !self.options.history_enabled {
-            return;
+            return Ok(());
         }
-        history.push_back(line);
-        trim_history(history, self.options.max_history_lines);
+        editor.add_history_entry(line)?;
+        Ok(())
     }
 }
 
-fn trim_history(history: &mut VecDeque<String>, max_lines: usize) {
+fn trim_history_file(path: &PathBuf, max_lines: usize) -> Result<()> {
+    let content = fs::read_to_string(path)?;
+    let mut lines = content.lines().map(str::to_string).collect::<Vec<_>>();
     if max_lines == 0 {
-        history.clear();
-        return;
+        lines.clear();
+    } else if lines.len() > max_lines {
+        lines = lines.split_off(lines.len() - max_lines);
     }
-    while history.len() > max_lines {
-        history.pop_front();
+    fs::write(
+        path,
+        lines.join("\n") + if lines.is_empty() { "" } else { "\n" },
+    )?;
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct StarForgeHelper {
+    candidates: Vec<String>,
+}
+
+impl StarForgeHelper {
+    fn new(candidates: Vec<String>) -> Self {
+        let mut seen = HashSet::new();
+        let mut candidates = candidates
+            .into_iter()
+            .filter(|candidate| !candidate.trim().is_empty())
+            .filter(|candidate| seen.insert(candidate.clone()))
+            .collect::<Vec<_>>();
+        candidates.sort();
+        Self { candidates }
+    }
+}
+
+impl Helper for StarForgeHelper {}
+impl Hinter for StarForgeHelper {
+    type Hint = String;
+}
+impl Highlighter for StarForgeHelper {}
+impl Validator for StarForgeHelper {}
+
+impl Completer for StarForgeHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        let start = line[..pos]
+            .rfind(|ch: char| ch.is_whitespace() || matches!(ch, '(' | ',' | '"' | '\''))
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+        let prefix = &line[start..pos];
+        let matches = self
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.starts_with(prefix))
+            .map(|candidate| Pair {
+                display: candidate.clone(),
+                replacement: candidate.clone(),
+            })
+            .collect();
+        Ok((start, matches))
     }
 }
 

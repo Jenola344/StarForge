@@ -649,6 +649,29 @@ starforge contract inspect CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6F
 
 ---
 
+### `starforge contract generate-bindings`
+
+Generate typed client wrappers from Soroban contract metadata embedded in a WASM file.
+
+**Usage:**
+```bash
+starforge contract generate-bindings <WASM_FILE> --lang <LANG>
+```
+
+**Arguments:**
+- `<WASM_FILE>` - Path to a compiled Soroban WASM file with `contractspecv0` metadata
+
+**Options:**
+- `--lang <LANG>` - Output language (`rust`, `ts`)
+
+**Examples:**
+```bash
+starforge contract generate-bindings ./target/wasm32-unknown-unknown/release/my_contract.wasm --lang rust
+starforge contract generate-bindings ./target/wasm32-unknown-unknown/release/my_contract.wasm --lang ts
+```
+
+---
+
 ### `starforge deploy`
 
 Deploy a compiled Soroban contract.
@@ -662,7 +685,7 @@ starforge deploy --wasm <FILE> [OPTIONS]
 - `--wasm <FILE>` - Path to compiled .wasm file (required)
 - `--network <NETWORK>` - Network to deploy to (`testnet`, `mainnet`)
 - `--wallet <NAME>` - Wallet name to use for deployment
-- `--optimize` - Run built-in WASM optimizer before deployment prep
+- `--optimize` - Run `soroban-optimize`/Stellar CLI optimization before deployment prep and show size reduction
 - `--simulate` - Simulate deploy via Soroban RPC (fee estimate, error check)
 - `--yes` - Skip confirmation prompt
 - `--execute` - Execute `stellar contract deploy ...` when `stellar` CLI is on PATH (default is dry-run)
@@ -686,6 +709,9 @@ starforge deploy --wasm ./my_contract.wasm --simulate --wallet deployer
 
 # Execute immediately (requires stellar CLI on PATH)
 starforge deploy --wasm ./my_contract.wasm --execute
+
+# Optimize before deployment
+starforge deploy --wasm ./my_contract.wasm --optimize
 ```
 
 ---
@@ -934,7 +960,7 @@ starforge shell --contract <WASM>
 **Options:**
 - `--contract <WASM>` - Path to compiled contract
 - `--no-history` - Disable persistent history for this session
-- `--history-max-lines <N>` - Max lines to keep in `~/.starforge/repl_history` (default: 1000)
+- `--history-max-lines <N>` - Max lines to keep in `~/.starforge/history` (default: 1000)
 
 **Example:**
 ```bash

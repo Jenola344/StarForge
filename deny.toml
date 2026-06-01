@@ -36,6 +36,7 @@ allow = [
     "MPL-2.0",
     "Zlib",
     "OpenSSL",
+    "CC0-1.0",
 ]
 
 # ring 0.16.x has no license field; clarify it manually.

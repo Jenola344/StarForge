@@ -1,3 +1,12 @@
+#![allow(
+    dead_code,
+    clippy::needless_range_loop,
+    clippy::redundant_closure,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::unnecessary_lazy_evaluations
+)]
+
 mod commands;
 pub mod plugins;
 mod utils;
@@ -198,7 +207,11 @@ fn handle_external_plugin(args: Vec<String>) -> anyhow::Result<()> {
     }
 
     // Warn about unknown-trust plugins before loading.
-    for pl in reg.plugins.iter().filter(|p| p.trust == TrustLevel::Unknown && !p.source.is_empty()) {
+    for pl in reg
+        .plugins
+        .iter()
+        .filter(|p| p.trust == TrustLevel::Unknown && !p.source.is_empty())
+    {
         eprintln!(
             "  ⚠  Warning: plugin '{}' is from an untrusted source: {}",
             pl.name, pl.source

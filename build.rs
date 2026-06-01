@@ -32,6 +32,7 @@ enum Commands {
     Template,
     Upgrade,
     #[command(external_subcommand)]
+    #[allow(dead_code)]
     External(Vec<String>),
 }
 

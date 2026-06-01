@@ -46,7 +46,13 @@ pub fn handle(cmd: NetworkCommands) -> Result<()> {
             soroban_rpc_url,
             friendbot_url,
             passphrase,
-        } => add_network(name, horizon_url, soroban_rpc_url, friendbot_url, passphrase),
+        } => add_network(
+            name,
+            horizon_url,
+            soroban_rpc_url,
+            friendbot_url,
+            passphrase,
+        ),
         NetworkCommands::Test { network } => test_network(network),
     }
 }

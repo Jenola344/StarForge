@@ -82,7 +82,11 @@ pub fn handle(args: InvokeArgs) -> Result<()> {
 
     let submit_wallet = if args.simulate { None } else { Some(wallet) };
 
-    p::step(1, if args.simulate { 1 } else { 2 }, "Simulating transaction...");
+    p::step(
+        1,
+        if args.simulate { 1 } else { 2 },
+        "Simulating transaction...",
+    );
 
     let outcome = soroban::invoke_contract(
         &args.contract_id,
@@ -97,7 +101,10 @@ pub fn handle(args: InvokeArgs) -> Result<()> {
     p::success("Simulation successful!");
     p::separator();
     p::kv_accent("Return Value", &outcome.simulation.return_value);
-    p::kv("Estimated Fee", &format!("{} stroops", outcome.simulation.fee));
+    p::kv(
+        "Estimated Fee",
+        &format!("{} stroops", outcome.simulation.fee),
+    );
 
     if !outcome.simulation.events.is_empty() {
         println!();

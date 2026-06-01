@@ -76,7 +76,10 @@ impl LocalSorobanSandbox {
             "-v".to_string(),
             format!(
                 "{}:/workspace/contract.wasm",
-                self.wasm_path.canonicalize().unwrap_or_else(|_| self.wasm_path.clone()).display()
+                self.wasm_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| self.wasm_path.clone())
+                    .display()
             ),
             "stellar/quickstart:latest".to_string(),
             "stellar".to_string(),

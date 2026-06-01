@@ -1,5 +1,4 @@
 use crate::utils::{config, horizon, optimizer, print as p, soroban};
-use crate::commands::info;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
@@ -105,10 +104,19 @@ pub fn handle(args: DeployArgs) -> Result<()> {
         wasm_size_kb = wasm_bytes.len() as f64 / 1024.0;
         println!();
         p::success("Optimization pass completed");
+        p::kv("Optimizer", &result.tool);
         p::kv("Input size", &format!("{} bytes", result.input_size_bytes));
         p::kv(
             "Output size",
             &format!("{} bytes", result.output_size_bytes),
+        );
+        p::kv(
+            "Size reduction",
+            &format!(
+                "{} bytes ({:+.2}%)",
+                result.reduction_bytes(),
+                result.reduction_percent()
+            ),
         );
         p::separator();
     }
@@ -127,7 +135,6 @@ pub fn handle(args: DeployArgs) -> Result<()> {
     }
 
     let cfg = config::load()?;
-    let wasm_hash = compute_local_wasm_hash(&wasm_bytes);
     let wallet = if let Some(ref wallet_name) = args.wallet {
         cfg.wallets
             .iter()
@@ -249,7 +256,7 @@ pub fn handle(args: DeployArgs) -> Result<()> {
         let output = Command::new("stellar")
             .args(&deploy_args)
             .output()
-            .map_err(|e| anyhow!("Failed to execute stellar CLI: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute stellar CLI: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

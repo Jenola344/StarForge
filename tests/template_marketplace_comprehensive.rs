@@ -145,9 +145,9 @@ mod template_marketplace_tests {
         let results: Vec<_> = templates
             .iter()
             .filter(|t| {
-                required_tags.iter().all(|req_tag| {
-                    t.tags.iter().any(|t| t.eq_ignore_ascii_case(req_tag))
-                })
+                required_tags
+                    .iter()
+                    .all(|req_tag| t.tags.iter().any(|t| t.eq_ignore_ascii_case(req_tag)))
             })
             .collect();
 
@@ -157,32 +157,30 @@ mod template_marketplace_tests {
 
     #[test]
     fn test_search_by_multiple_tags() {
-        let templates = vec![
-            TemplateEntry {
-                name: "uniswap-v2".to_string(),
-                version: "1.0.0".to_string(),
-                description: "Uniswap V2 DEX".to_string(),
-                author: "Stellar".to_string(),
-                tags: vec!["defi".to_string(), "dex".to_string(), "amm".to_string()],
-                source: TemplateSource::Git {
-                    url: "https://github.com/stellar/soroban-examples".to_string(),
-                    branch: Some("main".to_string()),
-                },
-                downloads: 1240,
-                verified: true,
-                documented: true,
-                maintenance: MaintenanceStatus::Active,
+        let templates = vec![TemplateEntry {
+            name: "uniswap-v2".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Uniswap V2 DEX".to_string(),
+            author: "Stellar".to_string(),
+            tags: vec!["defi".to_string(), "dex".to_string(), "amm".to_string()],
+            source: TemplateSource::Git {
+                url: "https://github.com/stellar/soroban-examples".to_string(),
+                branch: Some("main".to_string()),
             },
-        ];
+            downloads: 1240,
+            verified: true,
+            documented: true,
+            maintenance: MaintenanceStatus::Active,
+        }];
 
         // Filter by multiple tags - template must have ALL
         let required_tags = vec!["defi".to_string(), "dex".to_string()];
         let results: Vec<_> = templates
             .iter()
             .filter(|t| {
-                required_tags.iter().all(|req_tag| {
-                    t.tags.iter().any(|t| t.eq_ignore_ascii_case(req_tag))
-                })
+                required_tags
+                    .iter()
+                    .all(|req_tag| t.tags.iter().any(|t| t.eq_ignore_ascii_case(req_tag)))
             })
             .collect();
 
@@ -288,7 +286,9 @@ mod template_marketplace_tests {
                 description: "Template 1".to_string(),
                 author: "Author".to_string(),
                 tags: vec!["tag1".to_string()],
-                source: TemplateSource::Builtin { id: "t1".to_string() },
+                source: TemplateSource::Builtin {
+                    id: "t1".to_string(),
+                },
                 downloads: 100,
                 verified: true,
                 documented: true,
@@ -300,7 +300,9 @@ mod template_marketplace_tests {
                 description: "Template 2".to_string(),
                 author: "Author".to_string(),
                 tags: vec!["tag2".to_string()],
-                source: TemplateSource::Builtin { id: "t2".to_string() },
+                source: TemplateSource::Builtin {
+                    id: "t2".to_string(),
+                },
                 downloads: 50,
                 verified: false,
                 documented: true,
@@ -352,7 +354,9 @@ mod template_marketplace_tests {
             description: "A template".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -389,7 +393,9 @@ mod template_marketplace_tests {
             description: "Template".to_string(),
             author: "Author".to_string(),
             tags: vec!["defi".to_string(), "dex".to_string(), "amm".to_string()],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -434,7 +440,9 @@ mod template_marketplace_tests {
             description: "Verified".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: true,
             documented: false,
@@ -447,7 +455,9 @@ mod template_marketplace_tests {
             description: "Unverified".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -466,7 +476,9 @@ mod template_marketplace_tests {
             description: "Documented".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: true,
@@ -479,7 +491,9 @@ mod template_marketplace_tests {
             description: "Undocumented".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -487,7 +501,10 @@ mod template_marketplace_tests {
         };
 
         assert!(documented.quality_score() > undocumented.quality_score());
-        assert_eq!(documented.quality_score() - undocumented.quality_score(), 20);
+        assert_eq!(
+            documented.quality_score() - undocumented.quality_score(),
+            20
+        );
     }
 
     #[test]
@@ -498,7 +515,9 @@ mod template_marketplace_tests {
             description: "Active".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -511,7 +530,9 @@ mod template_marketplace_tests {
             description: "Maintained".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -524,7 +545,9 @@ mod template_marketplace_tests {
             description: "Deprecated".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -543,7 +566,9 @@ mod template_marketplace_tests {
             description: "Excellent".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 100000, // Very high downloads
             verified: true,
             documented: true,
@@ -684,7 +709,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "Template".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 100,
             verified: false,
             documented: false,
@@ -707,7 +734,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "C++ style template".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -731,7 +760,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "DEX".to_string(),
             author: "Author".to_string(),
             tags: vec!["DeFi".to_string()],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -755,7 +786,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "Template".to_string(),
             author: "Author".to_string(),
             tags: vec![], // Empty tags
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -774,7 +807,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: long_description.clone(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -792,7 +827,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "New template".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: 0,
             verified: false,
             documented: false,
@@ -810,7 +847,9 @@ pub struct {{PROJECT_NAME_PASCAL}} {
             description: "Popular".to_string(),
             author: "Author".to_string(),
             tags: vec![],
-            source: TemplateSource::Builtin { id: "test".to_string() },
+            source: TemplateSource::Builtin {
+                id: "test".to_string(),
+            },
             downloads: u32::MAX,
             verified: false,
             documented: false,

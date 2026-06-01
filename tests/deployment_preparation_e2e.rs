@@ -381,7 +381,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 10.0).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 10.0)
+            .unwrap();
         assert!(!plan.warnings.is_empty());
         assert!(plan.warnings[0].contains("128 KB"));
     }
@@ -403,7 +405,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 10.0).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 10.0)
+            .unwrap();
         assert!(plan.warnings.iter().any(|w| w.contains("MAINNET")));
     }
 
@@ -423,7 +427,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 0.5).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 0.5)
+            .unwrap();
         assert!(plan.warnings.iter().any(|w| w.contains("Low XLM")));
     }
 
@@ -443,7 +449,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 100.0).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 100.0)
+            .unwrap();
         assert!(plan.warnings.is_empty());
     }
 
@@ -466,7 +474,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 10.0).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 10.0)
+            .unwrap();
         assert_eq!(plan.network, "testnet");
     }
 
@@ -487,7 +497,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 100.0).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 100.0)
+            .unwrap();
         assert_eq!(plan.network, "mainnet");
     }
 
@@ -525,7 +537,10 @@ mod deployment_preparation_tests {
         assert!(plan.is_ok());
 
         let plan = plan.unwrap();
-        assert_eq!(plan.wasm_hash, "93a44bbb96c751218e4c00d479e4c14358122a389acca16205b1e4d0dc5f9476");
+        assert_eq!(
+            plan.wasm_hash,
+            "93a44bbb96c751218e4c00d479e4c14358122a389acca16205b1e4d0dc5f9476"
+        );
         assert_eq!(plan.wallet_name, "deployer");
         assert_eq!(plan.xlm_balance, 50.0);
         assert!(plan.warnings.is_empty());
@@ -548,7 +563,9 @@ mod deployment_preparation_tests {
             valid: true,
         };
 
-        let plan = config.plan_deployment(&wasm, Some("deployer"), 0.5).unwrap();
+        let plan = config
+            .plan_deployment(&wasm, Some("deployer"), 0.5)
+            .unwrap();
         assert!(plan.warnings.len() >= 2); // Size + mainnet + low balance
     }
 

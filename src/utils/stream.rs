@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Deserialize;
-use stellar_xdr::curr::{Limited, Limits, ScSymbol, ScVal, WriteXdr};
 use std::thread;
 use std::time::Duration;
+use stellar_xdr::curr::{Limited, Limits, ScSymbol, ScVal, WriteXdr};
 
 /// RPC and client-side filters for Soroban `getEvents`.
 #[derive(Debug, Clone, Default)]
@@ -147,11 +147,7 @@ impl SorobanEventStream {
     }
 
     fn build_rpc_filter(&self) -> serde_json::Value {
-        let event_type = self
-            .filters
-            .event_type
-            .as_deref()
-            .unwrap_or("contract");
+        let event_type = self.filters.event_type.as_deref().unwrap_or("contract");
 
         let mut filter = serde_json::json!({
             "type": event_type,

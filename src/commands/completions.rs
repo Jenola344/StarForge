@@ -114,6 +114,7 @@ enum Commands {
     Lint(crate::commands::lint::LintArgs),
     /// Execute an installed plugin command
     #[command(external_subcommand)]
+    #[allow(dead_code)]
     External(Vec<String>),
 }
 
@@ -161,9 +162,26 @@ mod tests {
     fn bash_completion_lists_all_subcommands() {
         let out = completion_output(Shell::Bash);
         for cmd in [
-            "wallet", "new", "contract", "inspect", "deploy", "info", "tx",
-            "network", "node", "completions", "shell", "monitor", "tutorial",
-            "benchmark", "test", "gas", "plugin", "template", "upgrade", "lint",
+            "wallet",
+            "new",
+            "contract",
+            "inspect",
+            "deploy",
+            "info",
+            "tx",
+            "network",
+            "node",
+            "completions",
+            "shell",
+            "monitor",
+            "tutorial",
+            "benchmark",
+            "test",
+            "gas",
+            "plugin",
+            "template",
+            "upgrade",
+            "lint",
         ] {
             assert!(
                 out.contains(cmd),
@@ -194,9 +212,26 @@ mod tests {
     fn zsh_completion_lists_all_subcommands() {
         let out = completion_output(Shell::Zsh);
         for cmd in [
-            "wallet", "new", "contract", "inspect", "deploy", "info", "tx",
-            "network", "node", "completions", "shell", "monitor", "tutorial",
-            "benchmark", "test", "gas", "plugin", "template", "upgrade", "lint",
+            "wallet",
+            "new",
+            "contract",
+            "inspect",
+            "deploy",
+            "info",
+            "tx",
+            "network",
+            "node",
+            "completions",
+            "shell",
+            "monitor",
+            "tutorial",
+            "benchmark",
+            "test",
+            "gas",
+            "plugin",
+            "template",
+            "upgrade",
+            "lint",
         ] {
             assert!(
                 out.contains(cmd),
@@ -227,9 +262,26 @@ mod tests {
     fn fish_completion_lists_all_subcommands() {
         let out = completion_output(Shell::Fish);
         for cmd in [
-            "wallet", "new", "contract", "inspect", "deploy", "info", "tx",
-            "network", "node", "completions", "shell", "monitor", "tutorial",
-            "benchmark", "test", "gas", "plugin", "template", "upgrade", "lint",
+            "wallet",
+            "new",
+            "contract",
+            "inspect",
+            "deploy",
+            "info",
+            "tx",
+            "network",
+            "node",
+            "completions",
+            "shell",
+            "monitor",
+            "tutorial",
+            "benchmark",
+            "test",
+            "gas",
+            "plugin",
+            "template",
+            "upgrade",
+            "lint",
         ] {
             assert!(
                 out.contains(cmd),

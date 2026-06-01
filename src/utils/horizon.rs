@@ -37,9 +37,15 @@ pub fn fund_account(public_key: &str, network: &str) -> Result<()> {
         friendbot_url(network)?.unwrap_or_else(|| "https://friendbot.stellar.org".to_string());
     let separator = if friendbot.contains('?') { '&' } else { '?' };
     let url = format!("{}{}addr={}", friendbot, separator, public_key);
-    let res = ureq::get(&url)
-        .call()
-        .with_context(|| format!("Friendbot request failed for {}", network))?;
+    let res = match ureq::get(&url).call() {
+        Ok(res) => res,
+        Err(ureq::Error::Status(status, _)) => {
+            anyhow::bail!("Friendbot returned status {}", status)
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("Friendbot request failed for {}", network))
+        }
+    };
     if res.status() == 200 {
         Ok(())
     } else {
@@ -131,7 +137,9 @@ pub fn fetch_fee_stats(network: &str) -> Result<FeeStats> {
         .call()
         .with_context(|| format!("Failed to fetch fee stats from {}", network))?;
     if res.status() == 200 {
-        let stats: FeeStats = res.into_json().with_context(|| "Failed to parse fee stats response")?;
+        let stats: FeeStats = res
+            .into_json()
+            .with_context(|| "Failed to parse fee stats response")?;
         Ok(stats)
     } else {
         anyhow::bail!("Failed to get fee stats: HTTP {}", res.status())
@@ -556,9 +564,8 @@ mod tests {
                 network: "mocknet".to_string(),
                 version: "1".to_string(),
                 networks,
-                wallets: HashMap::new(),
-                identities: HashMap::new(),
-                default_identity: None,
+                wallets: Vec::new(),
+                telemetry_enabled: Some(false),
             })
             .expect("save config");
 

@@ -134,10 +134,7 @@ fn monitor_contract(
 
     let rpc_url = soroban::rpc_url(network)?;
 
-    notifications::info(&format!(
-        "Streaming contract events from {}.",
-        rpc_url
-    ));
+    notifications::info(&format!("Streaming contract events from {}.", rpc_url));
 
     let running = Arc::new(AtomicBool::new(true));
     {

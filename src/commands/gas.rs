@@ -84,8 +84,17 @@ fn optimize(target: PathBuf, output: PathBuf) -> Result<()> {
 
     println!();
     p::success("Optimization output written");
+    p::kv("Optimizer", &result.tool);
     p::kv("Bytes in", &result.input_size_bytes.to_string());
     p::kv("Bytes out", &result.output_size_bytes.to_string());
+    p::kv(
+        "Size reduction",
+        &format!(
+            "{} bytes ({:+.2}%)",
+            result.reduction_bytes(),
+            result.reduction_percent()
+        ),
+    );
     p::kv("Duration", &format!("{:?}", elapsed));
     Ok(())
 }

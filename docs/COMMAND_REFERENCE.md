@@ -67,6 +67,7 @@ starforge tutorial next
 |---------|---------|
 | `contract invoke` | Invoke contract function (`--simulate`) |
 | `contract inspect` | Inspect deployed contract metadata |
+| `contract generate-bindings <WASM_FILE>` | Generate Rust or TypeScript wrappers (`--lang rust\|ts`) |
 | `inspect storage` | Deep storage inspection |
 | `deploy --wasm <FILE>` | Prepare Soroban deployment |
 
@@ -77,6 +78,8 @@ starforge deploy --wasm target/wasm32v1-none/release/token.wasm \
   --wallet deployer --network testnet --simulate
 
 starforge deploy --wasm ./token.wasm --optimize --yes --execute
+
+starforge contract generate-bindings ./token.wasm --lang rust
 ```
 
 ---
@@ -156,7 +159,7 @@ starforge deploy --wasm ./token.wasm --optimize --yes --execute
 | Command | Purpose |
 |---------|---------|
 | `info` | Version, config path, network health, Stellar CLI detection |
-| `shell` | Interactive local REPL |
+| `shell` | Interactive local REPL with persistent history and tab completion |
 | `monitor` | Live event/threshold monitoring |
 | `benchmark` | CLI performance benchmarks |
 | `test` | Soroban WASM test runner |

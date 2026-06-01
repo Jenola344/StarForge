@@ -22,8 +22,9 @@ fn mock_template(name: &str) -> serde_json::Value {
 
 /// Build a registry JSON blob with `count` entries.
 fn make_registry_json(count: usize) -> String {
-    let templates: Vec<serde_json::Value> =
-        (0..count).map(|i| mock_template(&format!("template-{}", i))).collect();
+    let templates: Vec<serde_json::Value> = (0..count)
+        .map(|i| mock_template(&format!("template-{}", i)))
+        .collect();
     serde_json::to_string(&serde_json::json!({ "templates": templates })).unwrap()
 }
 
@@ -38,9 +39,31 @@ fn bench_cli_arg_parsing(c: &mut Criterion) {
     let sample_args = vec![
         vec!["starforge", "wallet", "create", "--name", "bench-wallet"],
         vec!["starforge", "template", "list"],
-        vec!["starforge", "deploy", "--wasm", "contract.wasm", "--network", "testnet"],
-        vec!["starforge", "contract", "invoke", "--id", "ABC123", "--fn", "hello"],
-        vec!["starforge", "plugin", "install", "my-plugin", "--path", "./libmy.so"],
+        vec![
+            "starforge",
+            "deploy",
+            "--wasm",
+            "contract.wasm",
+            "--network",
+            "testnet",
+        ],
+        vec![
+            "starforge",
+            "contract",
+            "invoke",
+            "--id",
+            "ABC123",
+            "--fn",
+            "hello",
+        ],
+        vec![
+            "starforge",
+            "plugin",
+            "install",
+            "my-plugin",
+            "--path",
+            "./libmy.so",
+        ],
     ];
 
     for args in &sample_args {
@@ -68,17 +91,13 @@ fn bench_template_registry_deserialise(c: &mut Criterion) {
     for count in [10usize, 50, 200, 1000] {
         let json = make_registry_json(count);
         group.throughput(Throughput::Elements(count as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(count),
-            &json,
-            |b, json_str| {
-                b.iter(|| {
-                    let v: serde_json::Value =
-                        serde_json::from_str(black_box(json_str)).expect("valid JSON");
-                    black_box(v);
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(count), &json, |b, json_str| {
+            b.iter(|| {
+                let v: serde_json::Value =
+                    serde_json::from_str(black_box(json_str)).expect("valid JSON");
+                black_box(v);
+            })
+        });
     }
 
     group.finish();
@@ -90,33 +109,24 @@ fn bench_template_registry_search(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(6));
 
     for count in [10usize, 100, 500] {
-        let templates: Vec<serde_json::Value> =
-            (0..count).map(|i| mock_template(&format!("template-{}", i))).collect();
+        let templates: Vec<serde_json::Value> = (0..count)
+            .map(|i| mock_template(&format!("template-{}", i)))
+            .collect();
 
         // Search for a term that matches roughly half the entries.
         let query = "template-5";
 
         group.throughput(Throughput::Elements(count as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(count),
-            &templates,
-            |b, tmpl| {
-                b.iter(|| {
-                    let q = black_box(query).to_lowercase();
-                    let results: Vec<_> = tmpl
-                        .iter()
-                        .filter(|t| {
-                            t["name"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_lowercase()
-                                .contains(&q)
-                        })
-                        .collect();
-                    black_box(results);
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(count), &templates, |b, tmpl| {
+            b.iter(|| {
+                let q = black_box(query).to_lowercase();
+                let results: Vec<_> = tmpl
+                    .iter()
+                    .filter(|t| t["name"].as_str().unwrap_or("").to_lowercase().contains(&q))
+                    .collect();
+                black_box(results);
+            })
+        });
     }
 
     group.finish();

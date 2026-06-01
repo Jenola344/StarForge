@@ -101,26 +101,29 @@ pub fn validate_secret_key(secret: &str) -> Result<()> {
         let parts: Vec<&str> = secret.split(':').collect();
         // Accept both 3-part (legacy: salt:nonce:ciphertext) and 5-part (with KDF: salt:nonce:ciphertext:mem:iterations)
         if parts.len() != 3 && parts.len() != 5 {
-            anyhow::bail!("Invalid encrypted secret bundle format: expected 3 or 5 parts, got {}", parts.len());
+            anyhow::bail!(
+                "Invalid encrypted secret bundle format: expected 3 or 5 parts, got {}",
+                parts.len()
+            );
         }
-        
+
         // Validate base64 parts (first 3 parts are always base64)
         for i in 0..3 {
-            BASE64
-                .decode(parts[i])
-                .map_err(|_| anyhow::anyhow!("Invalid base64 in encrypted secret bundle at part {}", i))?;
+            BASE64.decode(parts[i]).map_err(|_| {
+                anyhow::anyhow!("Invalid base64 in encrypted secret bundle at part {}", i)
+            })?;
         }
-        
+
         // If 5-part bundle, validate KDF parameters are valid u32
         if parts.len() == 5 {
             parts[3]
                 .parse::<u32>()
-                .map_err(|_| anyhow!("Invalid KDF memory cost: must be a valid u32"))?;
+                .map_err(|_| anyhow::anyhow!("Invalid KDF memory cost: must be a valid u32"))?;
             parts[4]
                 .parse::<u32>()
-                .map_err(|_| anyhow!("Invalid KDF iteration count: must be a valid u32"))?;
+                .map_err(|_| anyhow::anyhow!("Invalid KDF iteration count: must be a valid u32"))?;
         }
-        
+
         return Ok(());
     }
 
@@ -502,24 +505,30 @@ pub fn get_network_passphrase(network: &str) -> String {
 /// Ensures the three built-in networks are present in the config's network map.
 /// Safe to call on any Config — existing entries are never overwritten.
 pub fn ensure_default_networks(cfg: &mut Config) {
-    cfg.networks.entry("testnet".to_string()).or_insert_with(|| NetworkConfig {
-        horizon_url: "https://horizon-testnet.stellar.org".to_string(),
-        soroban_rpc_url: Some("https://soroban-testnet.stellar.org".to_string()),
-        friendbot_url: Some("https://friendbot.stellar.org".to_string()),
-        passphrase: Some("Test SDF Network ; September 2015".to_string()),
-    });
-    cfg.networks.entry("mainnet".to_string()).or_insert_with(|| NetworkConfig {
-        horizon_url: "https://horizon.stellar.org".to_string(),
-        soroban_rpc_url: Some("https://mainnet.sorobanrpc.com".to_string()),
-        friendbot_url: None,
-        passphrase: Some("Public Global Stellar Network ; September 2015".to_string()),
-    });
-    cfg.networks.entry("docker-testnet".to_string()).or_insert_with(|| NetworkConfig {
-        horizon_url: "http://localhost:8000".to_string(),
-        soroban_rpc_url: Some("http://localhost:8000/rpc".to_string()),
-        friendbot_url: None,
-        passphrase: Some("Test SDF Network ; September 2015".to_string()),
-    });
+    cfg.networks
+        .entry("testnet".to_string())
+        .or_insert_with(|| NetworkConfig {
+            horizon_url: "https://horizon-testnet.stellar.org".to_string(),
+            soroban_rpc_url: Some("https://soroban-testnet.stellar.org".to_string()),
+            friendbot_url: Some("https://friendbot.stellar.org".to_string()),
+            passphrase: Some("Test SDF Network ; September 2015".to_string()),
+        });
+    cfg.networks
+        .entry("mainnet".to_string())
+        .or_insert_with(|| NetworkConfig {
+            horizon_url: "https://horizon.stellar.org".to_string(),
+            soroban_rpc_url: Some("https://mainnet.sorobanrpc.com".to_string()),
+            friendbot_url: None,
+            passphrase: Some("Public Global Stellar Network ; September 2015".to_string()),
+        });
+    cfg.networks
+        .entry("docker-testnet".to_string())
+        .or_insert_with(|| NetworkConfig {
+            horizon_url: "http://localhost:8000".to_string(),
+            soroban_rpc_url: Some("http://localhost:8000/rpc".to_string()),
+            friendbot_url: None,
+            passphrase: Some("Test SDF Network ; September 2015".to_string()),
+        });
 }
 
 pub fn save(config: &Config) -> Result<()> {

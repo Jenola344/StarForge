@@ -3,6 +3,8 @@
 
 #[cfg(test)]
 mod deployment_error_handling_tests {
+    const VALID_PUBLIC_KEY: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     // Mock structures
     #[derive(Debug, Clone)]
     struct WalletEntry {
@@ -181,11 +183,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_wallet_not_funded() {
         let mut validator = DeploymentValidator::new();
-        validator.add_wallet(
-            "deployer".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            false,
-        );
+        validator.add_wallet("deployer".to_string(), VALID_PUBLIC_KEY.to_string(), false);
 
         let result = validator.validate_wallet_for_deployment("deployer");
         assert!(result.is_err());
@@ -195,11 +193,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_wallet_funded() {
         let mut validator = DeploymentValidator::new();
-        validator.add_wallet(
-            "deployer".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            true,
-        );
+        validator.add_wallet("deployer".to_string(), VALID_PUBLIC_KEY.to_string(), true);
 
         let result = validator.validate_wallet_for_deployment("deployer");
         assert!(result.is_ok());
@@ -210,7 +204,8 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_public_key_invalid_prefix() {
         let validator = DeploymentValidator::new();
-        let result = validator.validate_public_key("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH");
+        let result = validator
+            .validate_public_key("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("start with 'G'"));
     }
@@ -218,7 +213,8 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_public_key_too_short() {
         let validator = DeploymentValidator::new();
-        let result = validator.validate_public_key("GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEF");
+        let result = validator
+            .validate_public_key("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("56 characters"));
     }
@@ -226,7 +222,8 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_public_key_too_long() {
         let validator = DeploymentValidator::new();
-        let result = validator.validate_public_key("GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHX");
+        let result = validator
+            .validate_public_key("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("56 characters"));
     }
@@ -234,7 +231,8 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_public_key_invalid_characters() {
         let validator = DeploymentValidator::new();
-        let result = validator.validate_public_key("GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEF@#");
+        let result = validator
+            .validate_public_key("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("invalid characters"));
     }
@@ -242,7 +240,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_public_key_valid() {
         let validator = DeploymentValidator::new();
-        let result = validator.validate_public_key("GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH");
+        let result = validator.validate_public_key(VALID_PUBLIC_KEY);
         assert!(result.is_ok());
     }
 
@@ -322,11 +320,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_deployment_validation_all_checks_pass() {
         let mut validator = DeploymentValidator::new();
-        validator.add_wallet(
-            "deployer".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            true,
-        );
+        validator.add_wallet("deployer".to_string(), VALID_PUBLIC_KEY.to_string(), true);
 
         let wasm = WasmFile {
             path: "/path/to/contract.wasm".to_string(),
@@ -338,9 +332,7 @@ mod deployment_error_handling_tests {
         // All validations should pass
         assert!(validator.validate_wasm_file(&wasm).is_ok());
         assert!(validator.validate_wallet_for_deployment("deployer").is_ok());
-        assert!(validator
-            .validate_public_key("GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH")
-            .is_ok());
+        assert!(validator.validate_public_key(VALID_PUBLIC_KEY).is_ok());
         assert!(validator.validate_network("testnet").is_ok());
         assert!(validator.check_xlm_balance(10.0).is_ok());
     }
@@ -358,7 +350,9 @@ mod deployment_error_handling_tests {
 
         // Multiple validations should fail
         assert!(validator.validate_wasm_file(&wasm).is_err());
-        assert!(validator.validate_wallet_for_deployment("nonexistent").is_err());
+        assert!(validator
+            .validate_wallet_for_deployment("nonexistent")
+            .is_err());
         assert!(validator.validate_public_key("INVALID").is_err());
         assert!(validator.validate_network("unknown").is_err());
         assert!(validator.check_xlm_balance(0.0).is_err());
@@ -381,7 +375,7 @@ mod deployment_error_handling_tests {
         let mut validator = DeploymentValidator::new();
         validator.add_wallet(
             "poor-wallet".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            VALID_PUBLIC_KEY.to_string(),
             false,
         );
 
@@ -416,11 +410,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_validator_state_unchanged_after_errors() {
         let mut validator = DeploymentValidator::new();
-        validator.add_wallet(
-            "deployer".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            true,
-        );
+        validator.add_wallet("deployer".to_string(), VALID_PUBLIC_KEY.to_string(), true);
 
         let initial_wallet_count = validator.wallets.len();
 
@@ -437,11 +427,7 @@ mod deployment_error_handling_tests {
     #[test]
     fn test_multiple_error_scenarios_dont_corrupt_state() {
         let mut validator = DeploymentValidator::new();
-        validator.add_wallet(
-            "deployer".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            true,
-        );
+        validator.add_wallet("deployer".to_string(), VALID_PUBLIC_KEY.to_string(), true);
 
         // Try multiple error scenarios
         let _ = validator.validate_wallet_for_deployment("missing");

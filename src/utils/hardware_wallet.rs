@@ -65,34 +65,53 @@ pub fn device_status(_kind: HardwareWalletKind) -> Result<String> {
 
 #[cfg(feature = "hardware-wallet")]
 pub fn connect(kind: HardwareWalletKind) -> Result<HardwareWalletInfo> {
-    let transport = LedgerTransport::connect(kind)?;
-    let stellar_address = transport.get_public_key(STELLAR_HD_PATH).ok();
+    match kind {
+        HardwareWalletKind::Ledger => {
+            let transport = LedgerTransport::connect()?;
+            let stellar_address = transport.get_public_key(STELLAR_HD_PATH).ok();
 
-    Ok(HardwareWalletInfo {
-        kind,
-        device_count: transport.device_count,
-        stellar_address,
-        hd_path: STELLAR_HD_PATH.to_string(),
-    })
+            Ok(HardwareWalletInfo {
+                kind,
+                device_count: transport.device_count,
+                stellar_address,
+                hd_path: STELLAR_HD_PATH.to_string(),
+            })
+        }
+        HardwareWalletKind::Trezor => TrezorTransport::connect_info(STELLAR_HD_PATH),
+    }
 }
 
 #[cfg(feature = "hardware-wallet")]
 pub fn get_stellar_address(kind: HardwareWalletKind, hd_path: &str) -> Result<String> {
-    LedgerTransport::connect(kind)?.get_public_key(hd_path)
+    match kind {
+        HardwareWalletKind::Ledger => LedgerTransport::connect()?.get_public_key(hd_path),
+        HardwareWalletKind::Trezor => TrezorTransport::get_public_key(hd_path),
+    }
 }
 
 #[cfg(feature = "hardware-wallet")]
 pub fn device_status(kind: HardwareWalletKind) -> Result<String> {
-    let transport = LedgerTransport::connect(kind)?;
-    Ok(format!(
-        "{}: {} HID device(s) visible, Stellar app reachable",
-        kind, transport.device_count
-    ))
+    match kind {
+        HardwareWalletKind::Ledger => {
+            let transport = LedgerTransport::connect()?;
+            Ok(format!(
+                "{}: {} HID device(s) visible, Stellar app reachable",
+                kind, transport.device_count
+            ))
+        }
+        HardwareWalletKind::Trezor => TrezorTransport::status(),
+    }
 }
 
 #[cfg(feature = "hardware-wallet")]
 pub fn sign(kind: HardwareWalletKind, message: &[u8]) -> Result<Vec<u8>> {
-    LedgerTransport::connect(kind)?.sign_message(STELLAR_HD_PATH, message)
+    match kind {
+        HardwareWalletKind::Ledger => LedgerTransport::connect()?.sign_message(STELLAR_HD_PATH, message),
+        HardwareWalletKind::Trezor => anyhow::bail!(
+            "Trezor Stellar support is available for device detection and address derivation. \
+             Arbitrary message signing is not supported by the Trezor Stellar app; sign a Stellar transaction envelope instead."
+        ),
+    }
 }
 
 fn parse_hd_path(path: &str) -> Result<Vec<u32>> {
@@ -186,16 +205,7 @@ struct LedgerTransport {
 
 #[cfg(feature = "hardware-wallet")]
 impl LedgerTransport {
-    fn connect(kind: HardwareWalletKind) -> Result<Self> {
-        match kind {
-            HardwareWalletKind::Ledger => Self::connect_ledger(),
-            HardwareWalletKind::Trezor => anyhow::bail!(
-                "Trezor transport is not implemented yet. Use Ledger with `--features hardware-wallet` for now."
-            ),
-        }
-    }
-
-    fn connect_ledger() -> Result<Self> {
+    fn connect() -> Result<Self> {
         let api = hidapi::HidApi::new().context("Failed to initialize HID API")?;
         let devices = api
             .device_list()
@@ -318,6 +328,83 @@ impl LedgerTransport {
         }
 
         signature.ok_or_else(|| anyhow::anyhow!("Ledger did not return a signature"))
+    }
+}
+
+#[cfg(feature = "hardware-wallet")]
+struct TrezorTransport;
+
+#[cfg(feature = "hardware-wallet")]
+impl TrezorTransport {
+    fn connect_info(hd_path: &str) -> Result<HardwareWalletInfo> {
+        let device_count = trezor_client::find_devices(false).len();
+        if device_count == 0 {
+            anyhow::bail!("No Trezor device detected. Connect and unlock your Trezor.");
+        }
+
+        let stellar_address = Self::get_public_key(hd_path).ok();
+        Ok(HardwareWalletInfo {
+            kind: HardwareWalletKind::Trezor,
+            device_count,
+            stellar_address,
+            hd_path: hd_path.to_string(),
+        })
+    }
+
+    fn status() -> Result<String> {
+        let mut trezor = Self::connect()?;
+        trezor
+            .init_device(None)
+            .context("Failed to initialize Trezor session")?;
+        let features = trezor
+            .features()
+            .ok_or_else(|| anyhow::anyhow!("Trezor did not return feature information"))?;
+        Ok(format!(
+            "Trezor: model {}, firmware {}.{}.{}, label '{}'",
+            features.model(),
+            features.major_version(),
+            features.minor_version(),
+            features.patch_version(),
+            features.label()
+        ))
+    }
+
+    fn get_public_key(hd_path: &str) -> Result<String> {
+        let mut trezor = Self::connect()?;
+        trezor
+            .init_device(None)
+            .context("Failed to initialize Trezor session")?;
+
+        let mut request = trezor_client::protos::StellarGetAddress::new();
+        request.address_n = parse_hd_path(hd_path)?;
+        request.set_show_display(false);
+        request.set_chunkify(false);
+
+        let response = trezor.call(
+            request,
+            Box::new(|_, message: trezor_client::protos::StellarAddress| {
+                Ok(message.address().to_string())
+            }),
+        )?;
+        let address = trezor_client::client::handle_interaction(response)
+            .context("Trezor did not return a Stellar address")?;
+        crate::utils::config::validate_public_key(&address)?;
+        Ok(address)
+    }
+
+    fn connect() -> Result<trezor_client::Trezor> {
+        let mut devices = trezor_client::find_devices(false);
+        match devices.len() {
+            0 => anyhow::bail!("No Trezor device detected. Connect and unlock your Trezor."),
+            1 => devices
+                .remove(0)
+                .connect()
+                .context("Failed to connect to Trezor over WebUSB"),
+            count => anyhow::bail!(
+                "Found {} Trezor devices. Disconnect extras and retry.",
+                count
+            ),
+        }
     }
 }
 

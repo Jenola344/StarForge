@@ -1064,11 +1064,19 @@ fn rotate_wallet(
 fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf) -> Result<()> {
     let cfg = config::load()?;
     let wallets_to_export: Vec<WalletBackupEntry> = if all {
-        cfg.wallets.iter().map(|w| WalletBackupEntry::from(w)).collect()
+        cfg.wallets
+            .iter()
+            .map(|w| WalletBackupEntry::from(w))
+            .collect()
     } else {
-        let name = name_opt.as_ref().ok_or_else(|| anyhow::anyhow!("Wallet name must be provided unless --all is used"))?;
+        let name = name_opt
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Wallet name must be provided unless --all is used"))?;
         config::validate_wallet_name(name)?;
-        let wallet = cfg.wallets.iter().find(|w| &w.name == name)
+        let wallet = cfg
+            .wallets
+            .iter()
+            .find(|w| &w.name == name)
             .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", name))?;
         vec![WalletBackupEntry::from(wallet)]
     };
@@ -1096,7 +1104,11 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf) -> Result
     fs::write(&output, encrypted)
         .with_context(|| format!("Failed to write {}", output.display()))?;
 
-    let name_display = if all { "all wallets".to_string() } else { name_opt.clone().unwrap() };
+    let name_display = if all {
+        "all wallets".to_string()
+    } else {
+        name_opt.clone().unwrap()
+    };
     p::success(&format!("Wallet(s) {} exported", name_display));
     p::kv("Backup file", &output.display().to_string());
     p::info("Secrets are only stored in the backup file; they are not printed to stdout.");
@@ -1175,8 +1187,8 @@ fn import_from_mnemonic(
 
 fn import_wallets(file: PathBuf) -> Result<()> {
     config::validate_file_path(&file, Some("json"))?;
-    let raw_contents = fs::read_to_string(&file)
-        .with_context(|| format!("Failed to read {}", file.display()))?;
+    let raw_contents =
+        fs::read_to_string(&file).with_context(|| format!("Failed to read {}", file.display()))?;
     // Detect encrypted format (salt:nonce:ciphertext)
     let contents = if raw_contents.matches(':').count() == 2 {
         let passphrase = crypto::prompt_passphrase("Enter passphrase to decrypt backup", false)?;
@@ -1184,8 +1196,8 @@ fn import_wallets(file: PathBuf) -> Result<()> {
     } else {
         raw_contents
     };
-    let backup: WalletBackup = serde_json::from_str(&contents)
-        .with_context(|| "Invalid backup JSON format")?;
+    let backup: WalletBackup =
+        serde_json::from_str(&contents).with_context(|| "Invalid backup JSON format")?;
 
     if backup.version != WALLET_BACKUP_VERSION {
         anyhow::bail!(

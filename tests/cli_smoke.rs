@@ -2,9 +2,15 @@
 
 use std::process::Command;
 
-fn starforge() -> Command {
+fn isolated_home() -> tempfile::TempDir {
+    tempfile::tempdir().expect("create isolated home")
+}
+
+fn starforge(home: &std::path::Path) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_starforge"));
     cmd.arg("-q");
+    cmd.env("HOME", home);
+    cmd.env("USERPROFILE", home);
     cmd
 }
 
@@ -19,13 +25,21 @@ fn assert_success(output: &std::process::Output, cmd: &str) {
 
 #[test]
 fn info_exits_zero() {
-    let output = starforge().arg("info").output().expect("spawn info");
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .arg("info")
+        .output()
+        .expect("spawn info");
     assert_success(&output, "starforge info");
 }
 
 #[test]
 fn version_prints_release() {
-    let output = starforge().arg("--version").output().expect("spawn version");
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .arg("--version")
+        .output()
+        .expect("spawn version");
     assert_success(&output, "starforge --version");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("starforge"));
@@ -33,7 +47,11 @@ fn version_prints_release() {
 
 #[test]
 fn help_lists_wallet_command() {
-    let output = starforge().arg("--help").output().expect("spawn help");
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .arg("--help")
+        .output()
+        .expect("spawn help");
     assert_success(&output, "starforge --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("wallet"));
@@ -41,7 +59,8 @@ fn help_lists_wallet_command() {
 
 #[test]
 fn network_show_exits_zero() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["network", "show"])
         .output()
         .expect("spawn network show");
@@ -50,7 +69,8 @@ fn network_show_exits_zero() {
 
 #[test]
 fn wallet_list_exits_zero() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["wallet", "list"])
         .output()
         .expect("spawn wallet list");
@@ -59,7 +79,8 @@ fn wallet_list_exits_zero() {
 
 #[test]
 fn template_list_exits_zero() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["template", "list"])
         .output()
         .expect("spawn template list");
@@ -68,7 +89,8 @@ fn template_list_exits_zero() {
 
 #[test]
 fn deploy_help_documents_flags() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["deploy", "--help"])
         .output()
         .expect("spawn deploy help");
@@ -80,7 +102,8 @@ fn deploy_help_documents_flags() {
 
 #[test]
 fn network_add_custom_succeeds() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args([
             "network",
             "add",
@@ -95,7 +118,7 @@ fn network_add_custom_succeeds() {
     assert_success(&output, "starforge network add");
 
     // Verify it appears in the list
-    let list_output = starforge()
+    let list_output = starforge(home.path())
         .args(["network", "show"])
         .output()
         .expect("spawn network show");
@@ -109,7 +132,8 @@ fn network_add_custom_succeeds() {
 
 #[test]
 fn network_add_rejects_empty_horizon_url() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["network", "add", "bad-net", "--horizon-url", ""])
         .output()
         .expect("spawn network add with empty url");
@@ -127,7 +151,8 @@ fn network_add_rejects_empty_horizon_url() {
 
 #[test]
 fn network_switch_to_mainnet_succeeds() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["network", "switch", "mainnet"])
         .output()
         .expect("spawn network switch mainnet");
@@ -136,7 +161,8 @@ fn network_switch_to_mainnet_succeeds() {
 
 #[test]
 fn network_switch_unknown_network_fails() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args(["network", "switch", "does-not-exist-xyz"])
         .output()
         .expect("spawn network switch unknown");
@@ -148,7 +174,8 @@ fn network_switch_unknown_network_fails() {
 
 #[test]
 fn network_add_reserved_name_fails() {
-    let output = starforge()
+    let home = isolated_home();
+    let output = starforge(home.path())
         .args([
             "network",
             "add",

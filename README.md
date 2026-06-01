@@ -215,6 +215,9 @@ starforge deploy \
 
 # Skip confirmation prompt (for CI)
 starforge deploy --wasm ./my_contract.wasm --yes
+
+# Optimize with soroban-optimize before deployment
+starforge deploy --wasm ./my_contract.wasm --optimize
 ```
 
 ### Contract commands
@@ -225,6 +228,10 @@ starforge contract inspect CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6F
 
 # Inspect on a specific network
 starforge contract inspect CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6FNCI --network mainnet
+
+# Generate typed wrappers from embedded contract metadata
+starforge contract generate-bindings ./my_contract.wasm --lang rust
+starforge contract generate-bindings ./my_contract.wasm --lang ts
 ```
 
 ### Environment info
@@ -400,5 +407,4 @@ StarForge has comprehensive documentation covering all aspects of the project:
 **Total**: 17 documentation files with 7,700+ lines covering architecture, development, API reference, and examples.
 
 For a complete overview, see [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md).
-
 

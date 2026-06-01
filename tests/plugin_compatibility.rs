@@ -12,7 +12,10 @@ fn test_plugin_loader_basic_compatibility() {
     assert!(output.status.success(), "Version command should succeed");
 
     let version_str = String::from_utf8_lossy(&output.stdout);
-    assert!(!version_str.is_empty(), "Version output should not be empty");
+    assert!(
+        !version_str.is_empty(),
+        "Version output should not be empty"
+    );
 }
 
 #[test]
@@ -24,7 +27,10 @@ fn test_plugin_list_works() {
         .output()
         .expect("Failed to list plugins");
 
-    assert!(output.status.success(), "Plugin list command should succeed");
+    assert!(
+        output.status.success(),
+        "Plugin list command should succeed"
+    );
 }
 
 #[test]
@@ -48,7 +54,8 @@ fn test_plugin_incompatible_version_handling() {
     let output_combined = format!("{}{}", stderr, stdout);
 
     assert!(
-        output_combined.contains("not found") || output_combined.contains("error")
+        output_combined.contains("not found")
+            || output_combined.contains("error")
             || output.status.code() == Some(0),
         "Should provide clear error message for missing plugin"
     );
@@ -64,12 +71,14 @@ fn test_plugin_interface_stability() {
         .output()
         .expect("Failed to get plugin help");
 
-    assert!(help_output.status.success(), "Plugin help should be available");
+    assert!(
+        help_output.status.success(),
+        "Plugin help should be available"
+    );
 
     let help_text = String::from_utf8_lossy(&help_output.stdout);
     assert!(
-        help_text.contains("list") || help_text.contains("install")
-            || help_text.contains("plugin"),
+        help_text.contains("list") || help_text.contains("install") || help_text.contains("plugin"),
         "Plugin interface should document available commands"
     );
 }
@@ -84,7 +93,10 @@ fn test_plugin_version_mismatch_detection() {
         .expect("Failed to get version");
 
     let version_str = String::from_utf8_lossy(&version_output.stdout);
-    assert!(!version_str.is_empty(), "Should report version for compatibility checks");
+    assert!(
+        !version_str.is_empty(),
+        "Should report version for compatibility checks"
+    );
 
     assert!(
         version_str.contains("starforge") || version_str.contains("v") || version_str.contains("."),
@@ -109,7 +121,8 @@ fn test_plugin_error_messages_are_clear() {
         let combined = format!("{}{}", stderr, stdout);
 
         assert!(
-            combined.contains("error") || combined.contains("failed")
+            combined.contains("error")
+                || combined.contains("failed")
                 || combined.contains("not found")
                 || combined.contains("invalid"),
             "Error messages should clearly indicate what went wrong"

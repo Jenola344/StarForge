@@ -1,7 +1,8 @@
-use crate::utils::{config, crypto, print as p, soroban};
+use crate::utils::{bindings, config, crypto, print as p, soroban};
 use anyhow::Result;
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use colored::*;
+use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum ContractCommands {
@@ -13,6 +14,8 @@ pub enum ContractCommands {
     ///
     /// See: https://developers.stellar.org/docs/build/smart-contracts/getting-started/deploy-increment-contract
     Upload(UploadArgs),
+    /// Generate typed client bindings from embedded WASM metadata
+    GenerateBindings(GenerateBindingsArgs),
 }
 
 #[derive(Args)]
@@ -63,12 +66,40 @@ pub struct UploadArgs {
     pub wallet: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum BindingLang {
+    Rust,
+    Ts,
+}
+
+#[derive(Args)]
+pub struct GenerateBindingsArgs {
+    /// Path to the compiled WASM file
+    pub wasm_file: PathBuf,
+    /// Binding target language
+    #[arg(long, value_enum)]
+    pub lang: BindingLang,
+}
+
 pub fn handle(cmd: ContractCommands) -> Result<()> {
     match cmd {
         ContractCommands::Invoke(args) => handle_invoke(args),
         ContractCommands::Inspect(args) => handle_inspect(args),
         ContractCommands::Upload(args) => handle_upload(args),
+        ContractCommands::GenerateBindings(args) => handle_generate_bindings(args),
     }
+}
+
+fn handle_generate_bindings(args: GenerateBindingsArgs) -> Result<()> {
+    config::validate_file_path(&args.wasm_file, Some("wasm"))?;
+
+    let lang = match args.lang {
+        BindingLang::Rust => bindings::BindingLanguage::Rust,
+        BindingLang::Ts => bindings::BindingLanguage::TypeScript,
+    };
+    let generated = bindings::generate_bindings(&args.wasm_file, lang)?;
+    println!("{}", generated);
+    Ok(())
 }
 
 fn handle_inspect(args: InspectArgs) -> Result<()> {
@@ -229,7 +260,11 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
 
     // Step 1 (+ optional Step 2): delegate to shared invoke_contract()
     println!();
-    p::step(1, if args.submit { 2 } else { 1 }, "Simulating contract invocation…");
+    p::step(
+        1,
+        if args.submit { 2 } else { 1 },
+        "Simulating contract invocation…",
+    );
 
     let outcome = soroban::invoke_contract(
         &args.contract_id,

@@ -10,11 +10,15 @@ fn test_hardware_wallet_command_availability() {
         .output()
         .expect("Failed to get wallet help");
 
-    assert!(output.status.success(), "Wallet command should be available");
+    assert!(
+        output.status.success(),
+        "Wallet command should be available"
+    );
 
     let help_text = String::from_utf8_lossy(&output.stdout);
     assert!(
-        help_text.contains("wallet") || help_text.contains("hardware")
+        help_text.contains("wallet")
+            || help_text.contains("hardware")
             || help_text.contains("ledger"),
         "Wallet help should document hardware wallet options"
     );
@@ -41,7 +45,8 @@ fn test_hardware_wallet_detection_graceful_fallback() {
 
     if !output.status.success() {
         assert!(
-            combined.contains("hardware") || combined.contains("not found")
+            combined.contains("hardware")
+                || combined.contains("not found")
                 || combined.contains("unavailable"),
             "Should clearly indicate hardware wallet status"
         );
@@ -66,7 +71,8 @@ fn test_hardware_wallet_without_device_handling() {
         let combined = format!("{}{}", stderr, stdout);
 
         assert!(
-            combined.contains("not found") || combined.contains("unavailable")
+            combined.contains("not found")
+                || combined.contains("unavailable")
                 || combined.contains("connect")
                 || combined.contains("error"),
             "Missing hardware device should produce clear diagnostic"
@@ -164,7 +170,8 @@ fn test_hardware_wallet_offline_behavior() {
                 let combined = format!("{}{}", stderr, stdout);
 
                 assert!(
-                    combined.contains("error") || combined.contains("required")
+                    combined.contains("error")
+                        || combined.contains("required")
                         || combined.contains("invalid"),
                     "Should provide clear error when requirements not met"
                 );
@@ -195,13 +202,13 @@ fn test_hardware_wallet_timeout_behavior() {
                 let combined = format!("{}{}", stderr, stdout);
 
                 assert!(
-                    combined.contains("timeout") || combined.contains("unavailable")
+                    combined.contains("timeout")
+                        || combined.contains("unavailable")
                         || combined.contains("error"),
                     "Timeout behavior should be clear and predictable"
                 );
             }
         }
-        Err(_) => {
-        }
+        Err(_) => {}
     }
 }

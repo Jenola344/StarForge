@@ -102,6 +102,12 @@ pub struct TemplateEntry {
     /// `None` means no upper bound.
     #[serde(default)]
     pub cli_version_max: Option<String>,
+    /// Whether the template ships user-facing documentation (e.g. a README).
+    #[serde(default)]
+    pub documented: bool,
+    /// Declared maintenance state of the template.
+    #[serde(default)]
+    pub maintenance: MaintenanceStatus,
 }
 
 /// Outcome of a template-vs-CLI compatibility check.
@@ -129,7 +135,10 @@ pub enum CompatibilityStatus {
 fn parse_semver(v: &str) -> std::result::Result<(u64, u64, u64), String> {
     let parts: Vec<&str> = v.splitn(3, '.').collect();
     if parts.len() != 3 {
-        return Err(format!("'{}' is not a valid semver string (expected major.minor.patch)", v));
+        return Err(format!(
+            "'{}' is not a valid semver string (expected major.minor.patch)",
+            v
+        ));
     }
     let parse = |s: &str| {
         s.parse::<u64>()
@@ -200,7 +209,10 @@ pub fn check_template_compatibility(entry: &TemplateEntry) -> CompatibilityStatu
 pub fn assert_template_compatible(entry: &TemplateEntry) -> Result<()> {
     match check_template_compatibility(entry) {
         CompatibilityStatus::Compatible => Ok(()),
-        CompatibilityStatus::TooOld { required_min, running } => {
+        CompatibilityStatus::TooOld {
+            required_min,
+            running,
+        } => {
             anyhow::bail!(
                 "Template '{}' requires StarForge >= {} but you are running {}.\n\
                  Please upgrade StarForge: https://github.com/Nanle-code/StarForge#installation",
@@ -209,7 +221,10 @@ pub fn assert_template_compatible(entry: &TemplateEntry) -> Result<()> {
                 running,
             )
         }
-        CompatibilityStatus::TooNew { required_max, running } => {
+        CompatibilityStatus::TooNew {
+            required_max,
+            running,
+        } => {
             anyhow::bail!(
                 "Template '{}' only supports StarForge <= {} but you are running {}.\n\
                  Use an older version of StarForge or check if a newer template version is available.",
@@ -226,12 +241,7 @@ pub fn assert_template_compatible(entry: &TemplateEntry) -> Result<()> {
                 reason,
             )
         }
-    /// Whether the template ships user-facing documentation (e.g. a README).
-    #[serde(default)]
-    pub documented: bool,
-    /// Declared maintenance state of the template.
-    #[serde(default)]
-    pub maintenance: MaintenanceStatus,
+    }
 }
 
 impl TemplateEntry {
@@ -442,8 +452,8 @@ pub fn save_registry(registry: &TemplateRegistry) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
-    let contents = serde_json::to_string_pretty(registry)
-        .with_context(|| "Failed to serialize registry")?;
+    let contents =
+        serde_json::to_string_pretty(registry).with_context(|| "Failed to serialize registry")?;
     fs::write(&path, contents)
         .with_context(|| format!("Failed to write registry to {}", path.display()))?;
     Ok(())
@@ -553,10 +563,7 @@ fn relevance_for(entry: &TemplateEntry, query_lower: &str) -> (u32, Vec<String>)
 /// (verification, documentation, usage, maintenance), then by raw downloads.
 /// An empty query lists every template that satisfies the filters, ranked by
 /// quality alone.
-pub fn search_templates_ranked(
-    query: &str,
-    filters: &SearchFilters,
-) -> Result<Vec<SearchResult>> {
+pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<Vec<SearchResult>> {
     let registry = load_registry()?;
     let query_lower = query.trim().to_lowercase();
 
@@ -685,11 +692,11 @@ pub fn remove_template(name: &str) -> Result<()> {
     let mut registry = load_registry()?;
     let before = registry.templates.len();
     registry.templates.retain(|t| t.name != name);
-    
+
     if registry.templates.len() == before {
         anyhow::bail!("Template '{}' not found in registry", name);
     }
-    
+
     save_registry(&registry)?;
     Ok(())
 }
@@ -715,13 +722,6 @@ pub fn fetch_template(entry: &TemplateEntry, dest: &Path) -> Result<()> {
     // Compatibility gate: reject incompatible templates before touching the filesystem.
     assert_template_compatible(entry)?;
 
-    let source = &entry.source;
-    if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@") {
-        fetch_git_template(source, None, dest)
-    } else if !source.is_empty() {
-        fetch_local_template(Path::new(source), dest)
-    } else {
-        anyhow::bail!("Template '{}' has no source configured", entry.name)
     match &entry.source {
         TemplateSource::Git { url, branch } => fetch_git_template(url, branch.as_deref(), dest),
         TemplateSource::Local { path } => fetch_local_template(Path::new(path), dest),
@@ -748,32 +748,33 @@ fn fetch_builtin_template(id: &str, dest: &Path) -> Result<()> {
 
 fn fetch_git_template(url: &str, branch: Option<&str>, dest: &Path) -> Result<()> {
     use std::process::Command;
-    
+
     let mut cmd = Command::new("git");
     cmd.arg("clone");
-    
+
     if let Some(b) = branch {
         cmd.arg("--branch").arg(b);
     }
-    
+
     cmd.arg("--depth").arg("1");
     cmd.arg(url);
     cmd.arg(dest);
-    
-    let output = cmd.output()
+
+    let output = cmd
+        .output()
         .with_context(|| "Failed to execute git clone. Is git installed?")?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Git clone failed: {}", stderr);
     }
-    
+
     // Remove .git directory to clean up
     let git_dir = dest.join(".git");
     if git_dir.exists() {
         fs::remove_dir_all(&git_dir).ok();
     }
-    
+
     Ok(())
 }
 
@@ -781,10 +782,10 @@ fn fetch_local_template(source: &Path, dest: &Path) -> Result<()> {
     if !source.exists() {
         anyhow::bail!("Local template path does not exist: {}", source.display());
     }
-    
+
     copy_dir_recursive(source, dest)
         .with_context(|| format!("Failed to copy template from {}", source.display()))?;
-    
+
     Ok(())
 }
 
@@ -792,26 +793,26 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
-    
+
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
         let file_name = entry.file_name();
-        
+
         // Skip .git directories
         if file_name == ".git" {
             continue;
         }
-        
+
         let dest_path = dst.join(&file_name);
-        
+
         if path.is_dir() {
             copy_dir_recursive(&path, &dest_path)?;
         } else {
             fs::copy(&path, &dest_path)?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -823,7 +824,16 @@ pub fn publish_template(
     tags: Vec<String>,
     version: String,
 ) -> Result<()> {
-    publish_template_versioned(template_path, name, description, author, tags, version, None, None)
+    publish_template_versioned(
+        template_path,
+        name,
+        description,
+        author,
+        tags,
+        version,
+        None,
+        None,
+    )
 }
 
 /// Like `publish_template` but also records optional CLI version constraints.
@@ -846,7 +856,10 @@ pub fn publish_template_versioned(
     let dest = template_storage_dir()?.join(&name);
 
     if dest.exists() {
-        anyhow::bail!("Template '{}' already exists. Remove it first or use a different name.", name);
+        anyhow::bail!(
+            "Template '{}' already exists. Remove it first or use a different name.",
+            name
+        );
     }
 
     copy_dir_recursive(template_path, &dest)?;
@@ -885,10 +898,18 @@ pub fn validate_template_structure(
 ) -> Result<()> {
     // --- Metadata completeness ---
     let mut missing: Vec<&str> = Vec::new();
-    if name.trim().is_empty() { missing.push("name"); }
-    if description.trim().is_empty() { missing.push("description"); }
-    if author.trim().is_empty() { missing.push("author"); }
-    if version.trim().is_empty() { missing.push("version"); }
+    if name.trim().is_empty() {
+        missing.push("name");
+    }
+    if description.trim().is_empty() {
+        missing.push("description");
+    }
+    if author.trim().is_empty() {
+        missing.push("author");
+    }
+    if version.trim().is_empty() {
+        missing.push("version");
+    }
     if !missing.is_empty() {
         anyhow::bail!("Missing required metadata fields: {}", missing.join(", "));
     }
@@ -933,7 +954,10 @@ mod tests {
             description: String::new(),
             author: String::new(),
             tags: vec![],
-            source: "https://example.com/repo.git".to_string(),
+            source: TemplateSource::Git {
+                url: "https://example.com/repo.git".to_string(),
+                branch: None,
+            },
             path: None,
             downloads: 0,
             verified: false,
@@ -941,13 +965,21 @@ mod tests {
             updated_at: String::new(),
             cli_version_min: None,
             cli_version_max: None,
+            documented: false,
+            maintenance: MaintenanceStatus::Unknown,
         }
+    }
+
     use std::fs;
     use tempfile::tempdir;
 
     fn make_valid_template(dir: &std::path::Path) {
         fs::create_dir_all(dir.join("src")).unwrap();
-        fs::write(dir.join("Cargo.toml"), "[package]\nname = \"{{PROJECT_NAME}}\"\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"{{PROJECT_NAME}}\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
         fs::write(dir.join("src/lib.rs"), "#![no_std]\n").unwrap();
     }
 
@@ -955,15 +987,21 @@ mod tests {
     fn validate_passes_for_valid_template() {
         let tmp = tempdir().unwrap();
         make_valid_template(tmp.path());
-        assert!(validate_template_structure(tmp.path(), "my-tpl", "A desc", "Alice", "1.0.0").is_ok());
+        assert!(
+            validate_template_structure(tmp.path(), "my-tpl", "A desc", "Alice", "1.0.0").is_ok()
+        );
     }
 
     #[test]
     fn validate_rejects_missing_metadata() {
         let tmp = tempdir().unwrap();
         make_valid_template(tmp.path());
-        let err = validate_template_structure(tmp.path(), "", "desc", "author", "1.0.0").unwrap_err();
-        assert!(err.to_string().contains("name"), "should mention missing field");
+        let err =
+            validate_template_structure(tmp.path(), "", "desc", "author", "1.0.0").unwrap_err();
+        assert!(
+            err.to_string().contains("name"),
+            "should mention missing field"
+        );
 
         let err = validate_template_structure(tmp.path(), "n", "", "author", "1.0.0").unwrap_err();
         assert!(err.to_string().contains("description"));
@@ -988,7 +1026,11 @@ mod tests {
     fn validate_rejects_missing_src_lib() {
         let tmp = tempdir().unwrap();
         fs::create_dir_all(tmp.path().join("src")).unwrap();
-        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"{{PROJECT_NAME}}\"\n").unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"{{PROJECT_NAME}}\"\n",
+        )
+        .unwrap();
         let err = validate_template_structure(tmp.path(), "n", "d", "a", "1.0.0").unwrap_err();
         assert!(err.to_string().contains("src/lib.rs"));
     }
@@ -998,7 +1040,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         fs::create_dir_all(tmp.path().join("src")).unwrap();
         // Cargo.toml without {{PROJECT_NAME}}
-        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"hardcoded\"\n").unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"hardcoded\"\n",
+        )
+        .unwrap();
         fs::write(tmp.path().join("src/lib.rs"), "").unwrap();
         let err = validate_template_structure(tmp.path(), "n", "d", "a", "1.0.0").unwrap_err();
         assert!(err.to_string().contains("PROJECT_NAME"));
@@ -1029,8 +1075,11 @@ mod tests {
         });
 
         // Test name search
-        let results: Vec<_> =
-            registry.templates.iter().filter(|t| t.name.contains("uniswap")).collect();
+        let results: Vec<_> = registry
+            .templates
+            .iter()
+            .filter(|t| t.name.contains("uniswap"))
+            .collect();
         assert_eq!(results.len(), 1);
 
         // Test tag search
@@ -1049,7 +1098,6 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("marker.txt"), "cached").unwrap();
 
-        let entry = make_entry("my-template");
         let entry = TemplateEntry {
             name: "my-template".to_string(),
             source: TemplateSource::Git {
@@ -1065,6 +1113,8 @@ mod tests {
             verified: false,
             created_at: String::new(),
             updated_at: String::new(),
+            cli_version_min: None,
+            cli_version_max: None,
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
         };
@@ -1074,7 +1124,10 @@ mod tests {
 
         if dest.exists() {
             let marker = dest.join("marker.txt");
-            assert!(marker.exists(), "cached content preserved on force_refresh=false");
+            assert!(
+                marker.exists(),
+                "cached content preserved on force_refresh=false"
+            );
         }
     }
 
@@ -1086,7 +1139,10 @@ mod tests {
         std::fs::write(cache_dir.join("stale.txt"), "old").unwrap();
 
         std::fs::remove_dir_all(&cache_dir).unwrap();
-        assert!(!cache_dir.exists(), "old cache dir should be gone after force_refresh");
+        assert!(
+            !cache_dir.exists(),
+            "old cache dir should be gone after force_refresh"
+        );
     }
 
     fn sample_entry() -> TemplateEntry {
@@ -1104,6 +1160,8 @@ mod tests {
             updated_at: String::new(),
             downloads: 0,
             verified: false,
+            cli_version_min: None,
+            cli_version_max: None,
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
         }
@@ -1263,26 +1321,38 @@ mod tests {
     #[test]
     fn check_version_range_malformed_min_is_error() {
         let result = check_version_range("0.1.0", Some("bad"), None);
-        assert!(matches!(result, CompatibilityStatus::MalformedMetadata { .. }));
+        assert!(matches!(
+            result,
+            CompatibilityStatus::MalformedMetadata { .. }
+        ));
     }
 
     #[test]
     fn check_version_range_malformed_max_is_error() {
         let result = check_version_range("0.1.0", None, Some("1.x.0"));
-        assert!(matches!(result, CompatibilityStatus::MalformedMetadata { .. }));
+        assert!(matches!(
+            result,
+            CompatibilityStatus::MalformedMetadata { .. }
+        ));
     }
 
     #[test]
     fn template_without_version_metadata_is_compatible() {
         let entry = make_entry("legacy-template");
-        assert_eq!(check_template_compatibility(&entry), CompatibilityStatus::Compatible);
+        assert_eq!(
+            check_template_compatibility(&entry),
+            CompatibilityStatus::Compatible
+        );
     }
 
     #[test]
     fn template_compatible_with_current_cli() {
         let mut entry = make_entry("current-template");
         entry.cli_version_min = Some(CLI_VERSION.to_string());
-        assert_eq!(check_template_compatibility(&entry), CompatibilityStatus::Compatible);
+        assert_eq!(
+            check_template_compatibility(&entry),
+            CompatibilityStatus::Compatible
+        );
     }
 
     #[test]
@@ -1315,7 +1385,10 @@ mod tests {
         let mut entry = make_entry("bad-template");
         entry.cli_version_min = Some("not-a-semver".to_string());
         let status = check_template_compatibility(&entry);
-        assert!(matches!(status, CompatibilityStatus::MalformedMetadata { .. }));
+        assert!(matches!(
+            status,
+            CompatibilityStatus::MalformedMetadata { .. }
+        ));
         assert!(assert_template_compatible(&entry).is_err());
     }
 }

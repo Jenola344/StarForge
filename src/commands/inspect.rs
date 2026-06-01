@@ -215,14 +215,21 @@ fn handle_storage(args: StorageArgs) -> Result<()> {
     if end < total {
         p::info(&format!(
             "Showing {}-{} of {} entries. Use --cursor {} to see more.",
-            start + 1, end, total, end
+            start + 1,
+            end,
+            total,
+            end
         ));
     }
     p::separator();
     Ok(())
 }
 
-fn paginate(entries: &[soroban::ContractStorageEntry], cursor: Option<usize>, limit: usize) -> &[soroban::ContractStorageEntry] {
+fn paginate(
+    entries: &[soroban::ContractStorageEntry],
+    cursor: Option<usize>,
+    limit: usize,
+) -> &[soroban::ContractStorageEntry] {
     let start = cursor.unwrap_or(0).min(entries.len());
     let end = (start + limit).min(entries.len());
     &entries[start..end]

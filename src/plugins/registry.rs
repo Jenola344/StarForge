@@ -244,18 +244,27 @@ mod tests {
         for level in [TrustLevel::Local, TrustLevel::Trusted, TrustLevel::Unknown] {
             let json = serde_json::to_string(&level).unwrap();
             let decoded: TrustLevel = serde_json::from_str(&json).unwrap();
-            assert_eq!(decoded, level, "TrustLevel {:?} should roundtrip via JSON", level);
+            assert_eq!(
+                decoded, level,
+                "TrustLevel {:?} should roundtrip via JSON",
+                level
+            );
         }
     }
 
     #[test]
     fn unknown_trust_is_default() {
-        let plugin: InstalledPlugin = serde_json::from_str(
-            r#"{"name":"test","path":"/tmp/test.so"}"#,
-        )
-        .unwrap();
-        assert_eq!(plugin.trust, TrustLevel::Unknown, "missing trust field should default to Unknown");
-        assert_eq!(plugin.source, "", "missing source field should default to empty string");
+        let plugin: InstalledPlugin =
+            serde_json::from_str(r#"{"name":"test","path":"/tmp/test.so"}"#).unwrap();
+        assert_eq!(
+            plugin.trust,
+            TrustLevel::Unknown,
+            "missing trust field should default to Unknown"
+        );
+        assert_eq!(
+            plugin.source, "",
+            "missing source field should default to empty string"
+        );
     }
 
     // ── resolve_plugin_library_path ───────────────────────────────────────────

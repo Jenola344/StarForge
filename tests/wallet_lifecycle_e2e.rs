@@ -41,7 +41,10 @@ mod wallet_lifecycle_e2e_tests {
             if name.is_empty() {
                 return Err("Wallet name cannot be empty".to_string());
             }
-            if name.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+            if name
+                .chars()
+                .any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+            {
                 return Err(format!("Invalid wallet name: {}", name));
             }
 
@@ -138,8 +141,8 @@ mod wallet_lifecycle_e2e_tests {
         let mut config = WalletConfig::new();
         let result = config.create_wallet(
             "alice".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            Some("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string()),
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+            Some("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
             None,
         );
 
@@ -154,7 +157,7 @@ mod wallet_lifecycle_e2e_tests {
         let mut config = WalletConfig::new();
         let result = config.create_wallet(
             "bob".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             None,
             Some("mainnet".to_string()),
         );
@@ -168,7 +171,7 @@ mod wallet_lifecycle_e2e_tests {
         let mut config = WalletConfig::new();
         let result = config.create_wallet(
             "".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             None,
             None,
         );
@@ -182,7 +185,7 @@ mod wallet_lifecycle_e2e_tests {
         let mut config = WalletConfig::new();
         let result = config.create_wallet(
             "alice@invalid".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             None,
             None,
         );
@@ -193,12 +196,8 @@ mod wallet_lifecycle_e2e_tests {
     #[test]
     fn test_create_wallet_invalid_public_key() {
         let mut config = WalletConfig::new();
-        let result = config.create_wallet(
-            "alice".to_string(),
-            "INVALID_KEY".to_string(),
-            None,
-            None,
-        );
+        let result =
+            config.create_wallet("alice".to_string(), "INVALID_KEY".to_string(), None, None);
 
         assert!(result.is_err());
     }
@@ -210,7 +209,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -218,7 +217,7 @@ mod wallet_lifecycle_e2e_tests {
 
         let result = config.create_wallet(
             "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
             None,
             None,
         );
@@ -234,7 +233,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -243,7 +242,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "bob".to_string(),
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
                 None,
                 None,
             )
@@ -268,7 +267,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -277,7 +276,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "bob".to_string(),
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
                 None,
                 None,
             )
@@ -297,8 +296,8 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                Some("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string()),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                Some("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
                 None,
             )
             .unwrap();
@@ -321,7 +320,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -343,7 +342,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -369,7 +368,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -387,7 +386,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -412,7 +411,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -421,7 +420,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "bob".to_string(),
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
                 None,
                 None,
             )
@@ -440,7 +439,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -465,7 +464,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -474,7 +473,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "bob".to_string(),
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
                 None,
                 None,
             )
@@ -492,7 +491,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -503,7 +502,7 @@ mod wallet_lifecycle_e2e_tests {
 
         let result = config.rotate_wallet(
             "alice",
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
         );
 
         assert!(result.is_ok());
@@ -517,7 +516,7 @@ mod wallet_lifecycle_e2e_tests {
         let mut config = WalletConfig::new();
         let result = config.rotate_wallet(
             "nonexistent",
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
         );
         assert!(result.is_err());
     }
@@ -528,7 +527,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -548,8 +547,8 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "deployer".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                Some("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string()),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                Some("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
                 None,
             )
             .unwrap();
@@ -570,7 +569,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .rotate_wallet(
                 "deployer",
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
             )
             .unwrap();
         assert!(!config.get_wallet("deployer").unwrap().funded);
@@ -588,7 +587,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -597,7 +596,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "bob".to_string(),
-                "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
                 None,
                 None,
             )
@@ -624,7 +623,7 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 None,
                 None,
             )
@@ -633,7 +632,7 @@ mod wallet_lifecycle_e2e_tests {
         // Try invalid operation
         let _ = config.create_wallet(
             "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
             None,
             None,
         );
@@ -650,8 +649,8 @@ mod wallet_lifecycle_e2e_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                Some("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string()),
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                Some("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
                 Some("mainnet".to_string()),
             )
             .unwrap();
@@ -666,6 +665,9 @@ mod wallet_lifecycle_e2e_tests {
         let wallet = config.get_wallet("alice-prod").unwrap();
         assert_eq!(wallet.created_at, original_created_at);
         assert_eq!(wallet.network, "mainnet");
-        assert_eq!(wallet.secret_key.as_ref().unwrap(), "SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH");
+        assert_eq!(
+            wallet.secret_key.as_ref().unwrap(),
+            "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        );
     }
 }

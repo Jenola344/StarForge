@@ -81,10 +81,9 @@ fn start(slug: String) -> Result<()> {
 fn next() -> Result<()> {
     let root = repo_root()?;
     let mut status = tutorial_engine::load_status()?;
-    let slug = status
-        .active
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("No active tutorial. Run starforge tutorial start <slug>"))?;
+    let slug = status.active.clone().ok_or_else(|| {
+        anyhow::anyhow!("No active tutorial. Run starforge tutorial start <slug>")
+    })?;
     let tutorial = tutorial_engine::load_tutorial(&root, &slug)?;
 
     if !status.completed_steps.contains(&status.current_step) {
@@ -142,8 +141,13 @@ fn status() -> Result<()> {
     Ok(())
 }
 
-fn print_current_step(tutorial: &tutorial_engine::TutorialDefinition, status: &tutorial_engine::TutorialStatus) {
-    let step_index = status.current_step.min(tutorial.steps.len().saturating_sub(1));
+fn print_current_step(
+    tutorial: &tutorial_engine::TutorialDefinition,
+    status: &tutorial_engine::TutorialStatus,
+) {
+    let step_index = status
+        .current_step
+        .min(tutorial.steps.len().saturating_sub(1));
     let step = &tutorial.steps[step_index];
     let body = tutorial_engine::render_step(step, step_index, tutorial.steps.len());
     for line in body.lines() {

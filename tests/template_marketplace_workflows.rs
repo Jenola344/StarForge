@@ -58,7 +58,9 @@ mod template_marketplace_workflow_tests {
                 .filter(|t| {
                     t.name.to_lowercase().contains(&query_lower)
                         || t.description.to_lowercase().contains(&query_lower)
-                        || t.tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower))
+                        || t.tags
+                            .iter()
+                            .any(|tag| tag.to_lowercase().contains(&query_lower))
                 })
                 .collect()
         }

@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
 
-use crate::utils::{config, crypto, horizon, print as p, tx_batch};
-use crate::utils::horizon::FeeStats; // Import FeeStats
+use crate::utils::horizon::FeeStats;
+use crate::utils::{config, crypto, horizon, print as p, tx_batch}; // Import FeeStats
 
 #[derive(Args)]
 pub struct TxArgs {
@@ -183,7 +183,10 @@ fn handle_batch(args: BatchArgs) -> Result<()> {
     );
     p::kv(
         "Transaction XDR",
-        &format!("{}...", &tx_result.transaction_xdr[..tx_result.transaction_xdr.len().min(20)]),
+        &format!(
+            "{}...",
+            &tx_result.transaction_xdr[..tx_result.transaction_xdr.len().min(20)]
+        ),
     );
 
     if !args.yes {
@@ -450,8 +453,6 @@ fn parse_asset(asset: &str) -> Result<(Option<String>, Option<String>)> {
         anyhow::bail!("Invalid asset format. Use CODE:ISSUER or XLM");
     }
 }
-
-
 
 fn handle_history(args: HistoryArgs) -> Result<()> {
     let limit = args.limit.min(200);

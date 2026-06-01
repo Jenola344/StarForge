@@ -6,7 +6,6 @@ use colored::*;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 #[derive(Subcommand)]
 pub enum NewCommands {
@@ -43,11 +42,21 @@ pub enum NewCommands {
 
 pub fn handle(cmd: NewCommands) -> Result<()> {
     match cmd {
-        NewCommands::Contract { name, template, from, search, tags: _, interactive, force_refresh } => {
+        NewCommands::Contract {
+            name,
+            template,
+            from,
+            search,
+            tags: _,
+            interactive,
+            force_refresh,
+        } => {
             if let Some(query) = search {
                 return search_templates(&query);
             }
-            let name = name.ok_or_else(|| anyhow::anyhow!("A contract name is required unless --search is used"))?;
+            let name = name.ok_or_else(|| {
+                anyhow::anyhow!("A contract name is required unless --search is used")
+            })?;
             if interactive {
                 scaffold_contract_interactive(name)
             } else {
@@ -70,8 +79,6 @@ pub fn handle(cmd: NewCommands) -> Result<()> {
 fn search_templates(query: &str) -> Result<()> {
     let results = templates::search_templates(query, None)?;
     p::header(&format!("Template search results for '{}'", query));
-
-
 
     if results.is_empty() {
         p::info("No templates matched that query.");
@@ -96,10 +103,10 @@ fn search_templates(query: &str) -> Result<()> {
 // ── Interactive mode ──────────────────────────────────────────────────────────
 
 struct ContractOptions {
-    name:         String,
-    author:       String,
-    license:      String,
-    storage:      String,
+    name: String,
+    author: String,
+    license: String,
+    storage: String,
     include_tests: bool,
 }
 
@@ -145,7 +152,13 @@ fn scaffold_contract_interactive(default_name: String) -> Result<()> {
         .default(true)
         .interact()?;
 
-    let opts = ContractOptions { name, author, license, storage, include_tests };
+    let opts = ContractOptions {
+        name,
+        author,
+        license,
+        storage,
+        include_tests,
+    };
 
     // Summary + confirm
     println!();
@@ -154,7 +167,14 @@ fn scaffold_contract_interactive(default_name: String) -> Result<()> {
     println!("    Author        : {}", opts.author.cyan());
     println!("    License       : {}", opts.license.cyan());
     println!("    Storage       : {}", opts.storage.cyan());
-    println!("    Tests         : {}", if opts.include_tests { "yes".green() } else { "no".yellow() });
+    println!(
+        "    Tests         : {}",
+        if opts.include_tests {
+            "yes".green()
+        } else {
+            "no".yellow()
+        }
+    );
     println!();
 
     let confirmed = Confirm::with_theme(&theme)
@@ -288,7 +308,7 @@ fn to_pascal(s: &str) -> String {
         .map(|w| {
             let mut c = w.chars();
             match c.next() {
-                None    => String::new(),
+                None => String::new(),
                 Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
             }
         })
@@ -308,7 +328,8 @@ fn cargo_toml(name: &str, license: &str, author: &str) -> String {
     } else {
         format!("authors = [\"{author}\"]\n")
     };
-    format!(r#"[package]
+    format!(
+        r#"[package]
 name = "{name}"
 version = "0.1.0"
 edition = "2021"
@@ -331,7 +352,8 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
-"#)
+"#
+    )
 }
 
 fn cargo_config() -> &'static str {
@@ -358,7 +380,8 @@ fn hello_world_template(name: &str, storage: &str, include_tests: bool) -> Strin
 
     pub fn get_value(env: Env, key: Symbol) -> Option<u64> {
         env.storage().persistent().get(&key)
-    }"#.to_string(),
+    }"#
+        .to_string(),
         "temporary" => r#"
     pub fn set_value(env: Env, key: Symbol, value: u64) {
         env.storage().temporary().set(&key, &value);
@@ -366,12 +389,14 @@ fn hello_world_template(name: &str, storage: &str, include_tests: bool) -> Strin
 
     pub fn get_value(env: Env, key: Symbol) -> Option<u64> {
         env.storage().temporary().get(&key)
-    }"#.to_string(),
+    }"#
+        .to_string(),
         _ => String::new(),
     };
 
     let test_module = if include_tests {
-        format!(r#"
+        format!(
+            r#"
 
 #[cfg(test)]
 mod test {{
@@ -386,7 +411,9 @@ mod test {{
         let words = client.hello(&symbol_short!("Dev"));
         assert_eq!(words, vec![&env, symbol_short!("Hello"), symbol_short!("Dev")]);
     }}
-}}"#, pascal = pascal)
+}}"#,
+            pascal = pascal
+        )
     } else {
         String::new()
     };
@@ -414,7 +441,8 @@ impl {pascal} {{
 
 fn token_template(name: &str) -> String {
     let pascal = to_pascal(name);
-    format!(r#"#![no_std]
+    format!(
+        r#"#![no_std]
 use soroban_sdk::{{contract, contractimpl, contracttype, symbol_short, Address, Env, String}};
 
 #[derive(Clone)]
@@ -509,12 +537,15 @@ mod test {{
         assert_eq!(client.balance(&user2), 300);
     }}
 }}
-"#, pascal = pascal)
+"#,
+        pascal = pascal
+    )
 }
 
 fn voting_template(name: &str) -> String {
     let pascal = to_pascal(name);
-    format!(r#"#![no_std]
+    format!(
+        r#"#![no_std]
 use soroban_sdk::{{contract, contractimpl, contracttype, Address, Env, String, Vec}};
 
 #[derive(Clone)]
@@ -637,12 +668,15 @@ mod test {{
         client.close_proposal(&proposal_id);
     }}
 }}
-"#, pascal = pascal)
+"#,
+        pascal = pascal
+    )
 }
 
 fn nft_template(name: &str) -> String {
     let pascal = to_pascal(name);
-    format!(r#"#![no_std]
+    format!(
+        r#"#![no_std]
 use soroban_sdk::{{contract, contractimpl, contracttype, Address, Env, String}};
 
 #[derive(Clone)]
@@ -750,13 +784,16 @@ mod test {{
         assert_eq!(uri, String::from_str(&env, "ipfs://token1"));
     }}
 }}
-"#, pascal = pascal)
+"#,
+        pascal = pascal
+    )
 }
 
 // ── dApp scaffold files ───────────────────────────────────────────────────────
 
 fn dapp_package(name: &str) -> String {
-    format!(r#"{{
+    format!(
+        r#"{{
   "name": "{name}",
   "version": "0.1.0",
   "type": "module",
@@ -775,11 +812,13 @@ fn dapp_package(name: &str) -> String {
     "vite": "^5.4.0"
   }}
 }}
-"#)
+"#
+    )
 }
 
 fn dapp_index(name: &str) -> String {
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -791,7 +830,8 @@ fn dapp_index(name: &str) -> String {
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
-"#)
+"#
+    )
 }
 
 fn dapp_tsconfig() -> String {
@@ -822,7 +862,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 }
 
 fn dapp_app(name: &str) -> String {
-    format!(r#"import React from 'react'
+    format!(
+        r#"import React from 'react'
 
 export default function App() {{
   return (
@@ -832,11 +873,13 @@ export default function App() {{
     </div>
   )
 }}
-"#)
+"#
+    )
 }
 
 fn dapp_readme(name: &str) -> String {
-    format!(r#"# {name}
+    format!(
+        r#"# {name}
 
 A Stellar dApp scaffolded with [starforge](https://github.com/stellar/starforge).
 A Stellar dApp scaffolded with [starforge](https://github.com/YOUR_USERNAME/starforge).
@@ -847,11 +890,13 @@ A Stellar dApp scaffolded with [starforge](https://github.com/YOUR_USERNAME/star
 npm install
 npm run dev
 ```
-"#)
+"#
+    )
 }
 
 fn readme(name: &str, template: &str, source: &str) -> String {
-    format!(r#"# {name}
+    format!(
+        r#"# {name}
 
 A Soroban smart contract scaffolded with [starforge](https://github.com/stellar/starforge).
 
@@ -877,7 +922,12 @@ starforge deploy \
 
 Template: `{template}`
 Source: `{source}`
-"#, name = name, snake = name.replace('-', "_"), template = template, source = source)
+"#,
+        name = name,
+        snake = name.replace('-', "_"),
+        template = template,
+        source = source
+    )
 }
 
 // ── Template Marketplace ──────────────────────────────────────────────────────
@@ -885,56 +935,67 @@ Source: `{source}`
 fn handle_template_search(query: &str, tags: Option<&str>) -> Result<()> {
     p::header("Template Marketplace — Search");
     p::kv("Query", query);
-    
+
     let tag_list = tags.map(|t| {
         t.split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
     });
-    
+
     if let Some(ref tags) = tag_list {
         p::kv("Tags", &tags.join(", "));
     }
-    
+
     println!();
-    
+
     let results = templates::search_templates(query, tag_list.as_deref())?;
-    
+
     if results.is_empty() {
         p::info("No templates found matching your search.");
         p::info("Try: starforge template publish ./my-template");
         return Ok(());
     }
-    
+
     p::separator();
     println!("  Found {} template(s):\n", results.len());
-    
+
     for (i, tmpl) in results.iter().enumerate() {
-        let verified = if tmpl.verified { " ✓".green() } else { "".normal() };
+        let verified = if tmpl.verified {
+            " ✓".green()
+        } else {
+            "".normal()
+        };
         println!("  {}. {}{}", i + 1, tmpl.name.cyan().bold(), verified);
         println!("     {}", tmpl.description.dimmed());
-        println!("     {} • {} • {} downloads", 
+        println!(
+            "     {} • {} • {} downloads",
             tmpl.version.yellow(),
             tmpl.author.dimmed(),
             tmpl.downloads
         );
-        
+
         if !tmpl.tags.is_empty() {
             println!("     Tags: {}", tmpl.tags.join(", ").bright_black());
         }
-        
+
         if i < results.len() - 1 {
             println!();
         }
     }
-    
+
     p::separator();
     println!();
     p::info("Use a template:");
-    println!("  {}", format!("starforge new contract my-project --template {} --from marketplace", 
-        results[0].name).cyan());
-    
+    println!(
+        "  {}",
+        format!(
+            "starforge new contract my-project --template {} --from marketplace",
+            results[0].name
+        )
+        .cyan()
+    );
+
     Ok(())
 }
 
@@ -1042,7 +1103,15 @@ fn scaffold_from_marketplace(name: String, template_name: String) -> Result<()> 
     install_step(
         "[2/3] Validating template structure…",
         "Template structure is valid",
-        || templates::validate_template_structure(&temp_dir),
+        || {
+            templates::validate_template_structure(
+                &temp_dir,
+                &template.name,
+                &template.description,
+                &template.author,
+                &template.version,
+            )
+        },
         || {
             format!(
                 "Template '{}' is missing required files (expected Cargo.toml, src/ and src/lib.rs).\n  • The template may be malformed; contact its author or pick another.\n  • The partial install was rolled back automatically.",
@@ -1076,10 +1145,17 @@ fn scaffold_from_marketplace(name: String, template_name: String) -> Result<()> 
     // Update download count (best-effort; failure here must not roll back a
     // successfully installed project).
     if let Ok(mut registry) = templates::load_registry() {
-        if let Some(entry) = registry.templates.iter_mut().find(|t| t.name == template.name) {
+        if let Some(entry) = registry
+            .templates
+            .iter_mut()
+            .find(|t| t.name == template.name)
+        {
             entry.downloads += 1;
             if let Err(e) = templates::save_registry(&registry) {
-                p::warn(&format!("Installed, but could not update download count: {}", e));
+                p::warn(&format!(
+                    "Installed, but could not update download count: {}",
+                    e
+                ));
             }
         }
     }
@@ -1104,21 +1180,21 @@ fn copy_template_contents(src: &Path, dst: &Path, project_name: &str) -> Result<
         let entry = entry?;
         let path = entry.path();
         let file_name = entry.file_name();
-        
+
         // Skip .git and target directories
         if file_name == ".git" || file_name == "target" {
             continue;
         }
-        
+
         let dest_path = dst.join(&file_name);
-        
+
         if path.is_dir() {
             fs::create_dir_all(&dest_path)?;
             copy_template_contents(&path, &dest_path, project_name)?;
         } else {
             // Read file content
             let mut content = fs::read_to_string(&path)?;
-            
+
             // Replace template placeholders
             content = content.replace("{{PROJECT_NAME}}", project_name);
             content = content.replace("{{PROJECT_NAME_SNAKE}}", &project_name.replace('-', "_"));

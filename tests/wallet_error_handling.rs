@@ -3,6 +3,10 @@
 
 #[cfg(test)]
 mod wallet_error_handling_tests {
+    const VALID_PUBLIC_KEY: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const VALID_PUBLIC_KEY_2: &str = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const VALID_SECRET_KEY: &str = "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     // Mock structures
     #[derive(Debug, Clone)]
     struct WalletEntry {
@@ -37,7 +41,10 @@ mod wallet_error_handling_tests {
                 return Err("Wallet name cannot be empty".to_string());
             }
 
-            if name.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+            if name
+                .chars()
+                .any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+            {
                 return Err(format!("Invalid wallet name: {}", name));
             }
 
@@ -45,7 +52,10 @@ mod wallet_error_handling_tests {
                 return Err(format!("Wallet '{}' already exists", name));
             }
 
-            if !public_key.starts_with('G') || public_key.len() != 56 {
+            if !public_key.starts_with('G')
+                || public_key.len() != 56
+                || !public_key.chars().all(|c| c.is_ascii_alphanumeric())
+            {
                 return Err("Invalid public key format".to_string());
             }
 
@@ -126,11 +136,7 @@ mod wallet_error_handling_tests {
     #[test]
     fn test_create_wallet_with_empty_name() {
         let mut config = WalletConfig::new();
-        let result = config.create_wallet(
-            "".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let result = config.create_wallet("".to_string(), VALID_PUBLIC_KEY.to_string(), None);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
@@ -143,11 +149,7 @@ mod wallet_error_handling_tests {
         let invalid_names = vec!["alice@", "bob#", "charlie$", "dave%", "eve&"];
 
         for name in invalid_names {
-            let result = config.create_wallet(
-                name.to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            );
+            let result = config.create_wallet(name.to_string(), VALID_PUBLIC_KEY.to_string(), None);
 
             assert!(result.is_err(), "Name '{}' should be invalid", name);
         }
@@ -160,10 +162,7 @@ mod wallet_error_handling_tests {
         let valid_names = vec!["alice", "bob-wallet", "charlie_wallet", "dave123"];
 
         for (i, name) in valid_names.iter().enumerate() {
-            let public_key = format!(
-                "G{}BC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH",
-                i
-            );
+            let public_key = format!("G{:0>55}", i);
             let result = config.create_wallet(name.to_string(), public_key, None);
 
             assert!(result.is_ok(), "Name '{}' should be valid", name);
@@ -175,10 +174,10 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
 
         let invalid_keys = vec![
-            "SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH", // Starts with S
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEF",   // Too short
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHX", // Too long
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEF@",  // Invalid char
+            "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // Starts with S
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",  // Too short
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX", // Too long
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@", // Invalid char
         ];
 
         for key in invalid_keys {
@@ -199,7 +198,7 @@ mod wallet_error_handling_tests {
         for secret in invalid_secrets {
             let result = config.create_wallet(
                 "wallet".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                VALID_PUBLIC_KEY.to_string(),
                 Some(secret.to_string()),
             );
             assert!(result.is_err(), "Secret '{}' should be invalid", secret);
@@ -213,18 +212,11 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
 
         config
-            .create_wallet(
-                "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
-        let result = config.create_wallet(
-            "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let result =
+            config.create_wallet("alice".to_string(), VALID_PUBLIC_KEY_2.to_string(), None);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
@@ -235,19 +227,12 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
 
         config
-            .create_wallet(
-                "Alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("Alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
         // Different case should be allowed (case-sensitive)
-        let result = config.create_wallet(
-            "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let result =
+            config.create_wallet("alice".to_string(), VALID_PUBLIC_KEY_2.to_string(), None);
 
         assert!(result.is_ok());
     }
@@ -285,8 +270,8 @@ mod wallet_error_handling_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                Some("SABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string()),
+                VALID_PUBLIC_KEY.to_string(),
+                Some(VALID_SECRET_KEY.to_string()),
             )
             .unwrap();
 
@@ -300,7 +285,7 @@ mod wallet_error_handling_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                VALID_PUBLIC_KEY.to_string(),
                 Some("salt:nonce:ciphertext".to_string()), // Encrypted format
             )
             .unwrap();
@@ -315,7 +300,7 @@ mod wallet_error_handling_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                VALID_PUBLIC_KEY.to_string(),
                 Some("salt:nonce:ciphertext".to_string()),
             )
             .unwrap();
@@ -331,7 +316,7 @@ mod wallet_error_handling_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                VALID_PUBLIC_KEY.to_string(),
                 Some("salt:nonce:ciphertext".to_string()),
             )
             .unwrap();
@@ -355,7 +340,7 @@ mod wallet_error_handling_tests {
         config
             .create_wallet(
                 "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+                VALID_PUBLIC_KEY.to_string(),
                 None, // No secret key
             )
             .unwrap();
@@ -373,11 +358,7 @@ mod wallet_error_handling_tests {
         config.network = "mainnet".to_string();
 
         config
-            .create_wallet(
-                "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
         let result = config.fund_wallet("alice");
@@ -391,11 +372,7 @@ mod wallet_error_handling_tests {
         config.network = "testnet".to_string();
 
         config
-            .create_wallet(
-                "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
         let result = config.fund_wallet("alice");
@@ -407,11 +384,8 @@ mod wallet_error_handling_tests {
     #[test]
     fn test_wallet_name_with_numbers() {
         let mut config = WalletConfig::new();
-        let result = config.create_wallet(
-            "wallet123".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let result =
+            config.create_wallet("wallet123".to_string(), VALID_PUBLIC_KEY.to_string(), None);
 
         assert!(result.is_ok());
     }
@@ -422,13 +396,13 @@ mod wallet_error_handling_tests {
 
         let result1 = config.create_wallet(
             "wallet-name".to_string(),
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            VALID_PUBLIC_KEY.to_string(),
             None,
         );
 
         let result2 = config.create_wallet(
             "wallet_name".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
+            VALID_PUBLIC_KEY_2.to_string(),
             None,
         );
 
@@ -441,11 +415,7 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
         let long_name = "a".repeat(1000);
 
-        let result = config.create_wallet(
-            long_name,
-            "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let result = config.create_wallet(long_name, VALID_PUBLIC_KEY.to_string(), None);
 
         // Should succeed - no length limit enforced
         assert!(result.is_ok());
@@ -456,19 +426,11 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
 
         config
-            .create_wallet(
-                "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
         // Try to create duplicate
-        let _ = config.create_wallet(
-            "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let _ = config.create_wallet("alice".to_string(), VALID_PUBLIC_KEY_2.to_string(), None);
 
         // State should be unchanged
         assert_eq!(config.wallets.len(), 1);
@@ -480,21 +442,13 @@ mod wallet_error_handling_tests {
         let mut config = WalletConfig::new();
 
         config
-            .create_wallet(
-                "alice".to_string(),
-                "GABC2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-                None,
-            )
+            .create_wallet("alice".to_string(), VALID_PUBLIC_KEY.to_string(), None)
             .unwrap();
 
         // Multiple failed operations
         let _ = config.fund_wallet("nonexistent");
         let _ = config.remove_wallet("nonexistent");
-        let _ = config.create_wallet(
-            "alice".to_string(),
-            "GXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGHIJKLMNOPQRSTUVWXYZ2DEFGH".to_string(),
-            None,
-        );
+        let _ = config.create_wallet("alice".to_string(), VALID_PUBLIC_KEY_2.to_string(), None);
 
         // State should still be consistent
         assert_eq!(config.wallets.len(), 1);

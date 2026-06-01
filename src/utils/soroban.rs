@@ -1,5 +1,6 @@
 use crate::utils::config::{self, WalletEntry};
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use stellar_strkey::{ed25519, Contract};
 use stellar_xdr::curr::{
@@ -94,10 +95,20 @@ pub fn invoke_contract(
 ) -> Result<InvokeOutcome> {
     let simulation = simulate_transaction(contract_id, function, args, arg_types, network)?;
     let transaction = match wallet {
-        Some(w) => Some(submit_transaction(contract_id, function, args, arg_types, network, w)?),
+        Some(w) => Some(submit_transaction(
+            contract_id,
+            function,
+            args,
+            arg_types,
+            network,
+            w,
+        )?),
         None => None,
     };
-    Ok(InvokeOutcome { simulation, transaction })
+    Ok(InvokeOutcome {
+        simulation,
+        transaction,
+    })
 }
 
 pub fn simulate_transaction(
@@ -468,10 +479,32 @@ fn extract_events(result: &serde_json::Value) -> Result<Vec<String>> {
     // Extract events from simulation result
     if let Some(events) = result.get("events") {
         if let Some(events_array) = events.as_array() {
-            return Ok(events_array.iter().map(|e| e.to_string()).collect());
+            return Ok(events_array
+                .iter()
+                .map(|event| {
+                    event
+                        .as_str()
+                        .map(decode_event_string)
+                        .unwrap_or_else(|| event.to_string())
+                })
+                .collect());
         }
     }
     Ok(Vec::new())
+}
+
+fn decode_event_string(event: &str) -> String {
+    match BASE64.decode(event) {
+        Ok(bytes) => {
+            let decoded = String::from_utf8_lossy(&bytes);
+            if decoded.chars().any(|ch| !ch.is_control()) {
+                decoded.into_owned()
+            } else {
+                event.to_string()
+            }
+        }
+        Err(_) => event.to_string(),
+    }
 }
 
 fn extract_simulation_errors(result: &serde_json::Value) -> Vec<String> {
@@ -653,8 +686,8 @@ mod tests {
     #[test]
     fn test_parse_simulate_error_top_level() {
         let fixture = read_fixture("simulate_error_top_level.json");
-        let response: SorobanRpcResponse<serde_json::Value> =
-            serde_json::from_str(&fixture).expect("failed to deserialize simulate_error_top_level.json");
+        let response: SorobanRpcResponse<serde_json::Value> = serde_json::from_str(&fixture)
+            .expect("failed to deserialize simulate_error_top_level.json");
 
         assert!(response.error.is_none());
         let result = response.result.expect("missing result in response");
@@ -667,8 +700,8 @@ mod tests {
     #[test]
     fn test_parse_simulate_error_in_results() {
         let fixture = read_fixture("simulate_error_in_results.json");
-        let response: SorobanRpcResponse<serde_json::Value> =
-            serde_json::from_str(&fixture).expect("failed to deserialize simulate_error_in_results.json");
+        let response: SorobanRpcResponse<serde_json::Value> = serde_json::from_str(&fixture)
+            .expect("failed to deserialize simulate_error_in_results.json");
 
         assert!(response.error.is_none());
         let result = response.result.expect("missing result in response");
@@ -681,8 +714,8 @@ mod tests {
     #[test]
     fn test_parse_get_ledger_entries_success() {
         let fixture = read_fixture("get_ledger_entries_success.json");
-        let response: SorobanRpcResponse<GetLedgerEntriesResult> =
-            serde_json::from_str(&fixture).expect("failed to deserialize get_ledger_entries_success.json");
+        let response: SorobanRpcResponse<GetLedgerEntriesResult> = serde_json::from_str(&fixture)
+            .expect("failed to deserialize get_ledger_entries_success.json");
 
         assert!(response.error.is_none());
         let result = response.result.expect("missing result in response");
@@ -694,9 +727,15 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(inspect_res.contract_id, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABGHI");
+        assert_eq!(
+            inspect_res.contract_id,
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABGHI"
+        );
         assert_eq!(inspect_res.executable, "Wasm");
-        assert_eq!(inspect_res.wasm_hash, Some("mock_wasm_hash_placeholder".to_string()));
+        assert_eq!(
+            inspect_res.wasm_hash,
+            Some("mock_wasm_hash_placeholder".to_string())
+        );
         assert_eq!(inspect_res.storage_durability, "Persistent");
         assert_eq!(inspect_res.latest_ledger, 42000);
         assert_eq!(inspect_res.last_modified_ledger_seq, Some(41990));
@@ -707,8 +746,8 @@ mod tests {
     #[test]
     fn test_parse_get_ledger_entries_empty() {
         let fixture = read_fixture("get_ledger_entries_empty.json");
-        let response: SorobanRpcResponse<GetLedgerEntriesResult> =
-            serde_json::from_str(&fixture).expect("failed to deserialize get_ledger_entries_empty.json");
+        let response: SorobanRpcResponse<GetLedgerEntriesResult> = serde_json::from_str(&fixture)
+            .expect("failed to deserialize get_ledger_entries_empty.json");
 
         assert!(response.error.is_none());
         let result = response.result.expect("missing result in response");
@@ -768,7 +807,10 @@ mod tests {
     fn encode_string_arg() {
         let result = encode_arguments(&["hello".to_string()], &["string".to_string()]).unwrap();
         assert_eq!(result.len(), 1);
-        assert!(result[0].contains("hello"), "encoded string should contain the value");
+        assert!(
+            result[0].contains("hello"),
+            "encoded string should contain the value"
+        );
     }
 
     #[test]
@@ -821,7 +863,8 @@ mod tests {
 
     #[test]
     fn encode_invalid_int_errors() {
-        let err = encode_arguments(&["not_a_number".to_string()], &["int".to_string()]).unwrap_err();
+        let err =
+            encode_arguments(&["not_a_number".to_string()], &["int".to_string()]).unwrap_err();
         assert!(err.to_string().len() > 0);
     }
 

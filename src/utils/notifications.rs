@@ -26,6 +26,7 @@ pub fn alert(message: &str) {
 }
 
 fn try_system_notification(message: &str) {
+    #[cfg(target_os = "macos")]
     let escaped = message.replace('\\', "\\\\").replace('"', "\\\"");
 
     #[cfg(target_os = "macos")]

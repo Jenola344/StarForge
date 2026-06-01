@@ -62,6 +62,7 @@ yarn-error.log*
 .starforge/
 config.toml
 *.wasm
+!tests/fixtures/minimal.wasm
 .soroban/
 
 # Test artifacts

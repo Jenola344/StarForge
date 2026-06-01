@@ -1,3 +1,4 @@
+pub mod bindings;
 pub mod config;
 pub mod crypto;
 pub mod hardware_wallet;

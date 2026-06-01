@@ -44,7 +44,12 @@ pub enum PluginCommands {
 
 pub fn handle(cmd: PluginCommands) -> Result<()> {
     match cmd {
-        PluginCommands::Install { name, path, source, force } => install(name, path, source, force),
+        PluginCommands::Install {
+            name,
+            path,
+            source,
+            force,
+        } => install(name, path, source, force),
         PluginCommands::List => list(),
         PluginCommands::Load => load(),
         PluginCommands::Uninstall { name } => uninstall(name),
@@ -123,7 +128,11 @@ fn load() -> Result<()> {
     }
 
     // Warn about any unknown-trust plugins before loading.
-    for pl in reg.plugins.iter().filter(|p| p.trust == TrustLevel::Unknown && !p.source.is_empty()) {
+    for pl in reg
+        .plugins
+        .iter()
+        .filter(|p| p.trust == TrustLevel::Unknown && !p.source.is_empty())
+    {
         p::warn(&format!(
             "Plugin '{}' is from an unknown/untrusted source: {}",
             pl.name, pl.source
