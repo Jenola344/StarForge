@@ -1,4 +1,5 @@
 pub mod benchmark;
+pub mod command_tree;
 pub mod completions;
 pub mod contract;
 pub mod deploy;

@@ -103,6 +103,10 @@ enum Commands {
     /// Static analysis and linting for Soroban contracts
     Lint(commands::lint::LintArgs),
 
+    /// Display the full command tree (all top-level commands, subcommands, and plugin extensions)
+    #[command(name = "commands")]
+    CommandTree,
+
     /// Execute an installed plugin command (e.g. `starforge defi ...`)
     #[command(external_subcommand)]
     External(Vec<String>),
@@ -143,6 +147,7 @@ fn main() {
         Commands::Template(_) => "template",
         Commands::Upgrade(_) => "upgrade",
         Commands::Lint(_) => "lint",
+        Commands::CommandTree => "commands",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -169,6 +174,7 @@ fn main() {
         Commands::Template(args) => commands::template::handle(args),
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd),
         Commands::Lint(args) => commands::lint::handle(args),
+        Commands::CommandTree => commands::command_tree::handle(),
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();

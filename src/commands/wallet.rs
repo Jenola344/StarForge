@@ -152,9 +152,9 @@ pub enum WalletCommands {
         #[arg(long)]
         output: PathBuf,
     },
-    /// Import a wallet from a JSON backup or BIP39 recovery phrase
+    /// Import a wallet from a JSON backup, BIP39 recovery phrase, or raw Stellar secret key
     Import {
-        /// Wallet name (required with --mnemonic)
+        /// Wallet name (required with --mnemonic or --key)
         name: Option<String>,
         /// Path to backup JSON file
         #[arg(long, group = "source")]
@@ -162,6 +162,9 @@ pub enum WalletCommands {
         /// Import from a BIP39 recovery phrase (prompted interactively)
         #[arg(long, group = "source")]
         mnemonic: bool,
+        /// Import from a raw Stellar secret key (starts with 'S', 56 characters)
+        #[arg(long, group = "source")]
+        key: Option<String>,
         /// Account index for SEP-0005 path m/44'/148'/index'
         #[arg(long, default_value = "0")]
         account_index: u32,
@@ -312,10 +315,19 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             name,
             file,
             mnemonic: from_mnemonic,
+            key,
             account_index,
             network,
             encrypt,
-        } => import_wallet(name, file, from_mnemonic, account_index, network, encrypt),
+        } => import_wallet(
+            name,
+            file,
+            from_mnemonic,
+            key,
+            account_index,
+            network,
+            encrypt,
+        ),
         WalletCommands::Connect { device } => connect_hardware(device),
         WalletCommands::HwAddress { device, path } => hw_address(device, &path),
         WalletCommands::HwStatus { device } => hw_status(device),
@@ -1119,6 +1131,7 @@ fn import_wallet(
     name: Option<String>,
     file: Option<PathBuf>,
     from_mnemonic: bool,
+    key: Option<String>,
     account_index: u32,
     network_override: Option<String>,
     encrypt: bool,
@@ -1130,8 +1143,19 @@ fn import_wallet(
         return import_from_mnemonic(name, account_index, network_override, encrypt);
     }
 
+    if let Some(secret_key) = key {
+        let name = name.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Wallet name is required when using --key (e.g. starforge wallet import alice --key SXXX...)"
+            )
+        })?;
+        return import_from_secret_key(name, secret_key, network_override, encrypt);
+    }
+
     let file = file.ok_or_else(|| {
-        anyhow::anyhow!("Provide --file <backup.json> or --mnemonic to import a wallet")
+        anyhow::anyhow!(
+            "Provide --file <backup.json>, --mnemonic, or --key <SXXX...> to import a wallet"
+        )
     })?;
     import_wallets(file)
 }
@@ -1178,6 +1202,64 @@ fn import_from_mnemonic(
 
     config::save(&cfg)?;
     p::success(&format!("Wallet '{}' imported from recovery phrase", name));
+    p::info(&format!(
+        "View it with: {}",
+        format!("starforge wallet show {}", name).cyan()
+    ));
+    Ok(())
+}
+
+fn import_from_secret_key(
+    name: String,
+    secret_key: String,
+    network_override: Option<String>,
+    encrypt: bool,
+) -> Result<()> {
+    if secret_key.contains(':') {
+        anyhow::bail!(
+            "--key expects a raw Stellar secret key (starts with 'S', 56 characters), \
+             not an encrypted bundle. Use --file to import an encrypted backup."
+        );
+    }
+    config::validate_secret_key(&secret_key)?;
+
+    let mut cfg = config::load()?;
+    config::validate_wallet_name(&name)?;
+
+    if cfg.wallets.iter().any(|w| w.name == name) {
+        anyhow::bail!("A wallet named '{}' already exists.", name);
+    }
+
+    let decoded_secret = StellarPrivateKey::from_string(&secret_key)
+        .map_err(|_| anyhow::anyhow!("Invalid Stellar secret key format"))?;
+    let signing_key = SigningKey::from_bytes(&decoded_secret.0);
+    let public_key = StellarPublicKey(signing_key.verifying_key().to_bytes()).to_string();
+
+    let network = network_override.unwrap_or_else(|| cfg.network.clone());
+
+    p::header(&format!("Importing wallet '{}' from secret key", name));
+    p::kv_accent("Public Key", &public_key);
+
+    let secret_to_store = if encrypt {
+        println!();
+        let pwd = crypto::prompt_passphrase("Set a passphrase to encrypt this wallet", false)?;
+        crypto::encrypt_secret(&pwd, &secret_key, None)?
+    } else {
+        secret_key
+    };
+
+    cfg.wallets.push(config::WalletEntry {
+        name: name.clone(),
+        public_key,
+        secret_key: Some(secret_to_store),
+        network,
+        created_at: Utc::now().to_rfc3339(),
+        funded: false,
+        rotation_history: Vec::new(),
+    });
+
+    config::save(&cfg)?;
+    p::success(&format!("Wallet '{}' imported from secret key", name));
     p::info(&format!(
         "View it with: {}",
         format!("starforge wallet show {}", name).cyan()
