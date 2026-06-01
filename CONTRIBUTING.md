@@ -383,6 +383,8 @@ When opening a PR, fill out the template with:
 
 ## Common Issues & Troubleshooting
 
+For detailed troubleshooting, see [BUILD_TROUBLESHOOTING.md](BUILD_TROUBLESHOOTING.md).
+
 ### "rustc version mismatch"
 
 Ensure you're on the correct Rust version:
@@ -448,6 +450,17 @@ rustup update stable
 cargo clean
 cargo clippy -- -D warnings
 ```
+
+### Build Baseline Status
+
+For a complete verification of the project's build status, see [BUILD_BASELINE_VERIFICATION.md](BUILD_BASELINE_VERIFICATION.md).
+
+This document confirms:
+- ✅ All 22 command handlers are properly implemented
+- ✅ All 24 utility modules are properly declared
+- ✅ Zero unresolved imports across 74 source files
+- ✅ All test files are ready to execute
+- ✅ The baseline is clean and ready for development
 
 ---
 
