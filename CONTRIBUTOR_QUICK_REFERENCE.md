@@ -1,0 +1,267 @@
+# Contributor Quick Reference
+
+Fast lookup guide for common development tasks in StarForge.
+
+## One-Minute Setup
+
+```bash
+# 1. Install Rust (if needed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# 2. Clone the repo
+git clone https://github.com/Nanle-code/StarForge.git
+cd StarForge
+
+# 3. Build and test
+cargo build
+cargo test
+
+# Done! You're ready to contribute.
+```
+
+## Common Commands
+
+| Task | Command |
+|------|---------|
+| Build (debug) | `cargo build` |
+| Build (release) | `cargo build --release` |
+| Run tests | `cargo test` |
+| Run with output | `cargo test -- --nocapture` |
+| Format code | `cargo fmt --all` |
+| Lint code | `cargo clippy -- -D warnings` |
+| Check security | `cargo deny check` |
+| Create branch | `git checkout -b feat/issue-XXX-description` |
+| Run smoke tests | `cargo test --test cli_smoke` |
+
+## Before Submitting a PR
+
+```bash
+# 1. Run all tests
+cargo test
+
+# 2. Format your code
+cargo fmt --all
+
+# 3. Check for linting issues
+cargo clippy -- -D warnings
+
+# 4. Verify the app runs
+cargo run -- --version
+
+# 5. Commit and push
+git add .
+git commit -m "feat: your change"
+git push origin feat/issue-XXX-description
+```
+
+## Project Structure
+
+```
+src/
+├── main.rs              # CLI entry point
+├── commands/            # Command modules
+│   ├── wallet.rs        # Wallet operations
+│   ├── new.rs           # Scaffolding
+│   ├── deploy.rs        # Contract deployment
+│   ├── contract.rs      # Contract inspection
+│   └── ...
+└── utils/               # Utilities
+    ├── config.rs        # Config file handling
+    ├── horizon.rs       # Horizon API client
+    ├── soroban.rs       # Soroban RPC client
+    └── print.rs         # CLI output formatting
+
+tests/                  # Integration tests
+├── cli_smoke.rs
+├── wallet_*.rs
+├── deploy_*.rs
+└── ...
+
+.github/
+├── workflows/
+│   ├── ci.yml          # Main CI pipeline
+│   └── release.yml
+└── pull_request_template.md
+```
+
+## Testing Patterns
+
+### Unit Tests (in src/)
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_my_function() {
+        let result = my_function(42);
+        assert_eq!(result, 43);
+    }
+}
+```
+
+### Integration Tests (in tests/)
+
+```rust
+// tests/my_test.rs
+#[test]
+fn test_integration() {
+    // Test that requires multiple modules
+}
+```
+
+### Running Tests
+
+```bash
+# All tests
+cargo test
+
+# Specific test
+cargo test test_name
+
+# With output
+cargo test -- --nocapture --test-threads=1
+
+# Integration test file
+cargo test --test cli_smoke
+```
+
+## Git Workflow
+
+```bash
+# 1. Create a branch
+git checkout -b feat/issue-208-contributor-guide
+
+# 2. Make changes
+vim src/commands/wallet.rs
+
+# 3. Commit
+git add src/commands/wallet.rs
+git commit -m "feat: add wallet encryption support"
+
+# 4. Push to your fork
+git push origin feat/issue-208-contributor-guide
+
+# 5. Open PR on GitHub
+```
+
+## Branch Naming Convention
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Feature | `feat/issue-XXX-description` | `feat/issue-208-contributor-guide` |
+| Bug fix | `fix/issue-XXX-description` | `fix/issue-205-wallet-panic` |
+| Documentation | `docs/description` | `docs/api-reference-update` |
+| Refactor | `refactor/description` | `refactor/config-module` |
+| Tests | `test/description` | `test/wallet-integration` |
+
+## Code Style
+
+### Formatting
+
+```bash
+# Auto-format all code
+cargo fmt --all
+
+# Check format (no changes)
+cargo fmt --all --check
+```
+
+### Documentation Comments
+
+```rust
+/// Brief description (one line).
+///
+/// More detailed explanation (optional).
+///
+/// # Arguments
+/// * `param1` - description
+///
+/// # Returns
+/// Description of return value
+///
+/// # Example
+/// ```
+/// let result = function(42);
+/// ```
+pub fn function(param1: i32) -> i32 {
+    param1 + 1
+}
+```
+
+## Common Issues
+
+| Problem | Solution |
+|---------|----------|
+| `rustc version mismatch` | `rustup update stable` |
+| Build fails | `cargo clean && cargo build` |
+| Tests fail (network) | Some tests need internet; retry or skip |
+| Permission denied on scripts | `chmod +x scripts/*.sh` |
+| Clippy warnings | `cargo clippy --all -- -D warnings` |
+
+## Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `Cargo.toml` | Project manifest and dependencies |
+| `Cargo.lock` | Dependency lock file (commit this) |
+| `.rustfmt.toml` | Code formatting rules |
+| `.github/workflows/ci.yml` | Continuous integration pipeline |
+| `rust-toolchain.toml` | Required Rust version |
+
+## Resources
+
+- **CONTRIBUTING.md** — Full contribution guide
+- **DEVELOPER_GUIDE.md** — In-depth development documentation
+- **README.md** — Project overview
+- **API_REFERENCE.md** — Complete command reference
+- **ARCHITECTURE.md** — System design and architecture
+
+## Getting Help
+
+- Check existing [issues](https://github.com/Nanle-code/StarForge/issues)
+- Search [discussions](https://github.com/Nanle-code/StarForge/discussions)
+- Read DEVELOPER_GUIDE.md for deep dives
+- Ask in a new issue or discussion
+
+## CI Pipeline
+
+The GitHub Actions pipeline runs on every push and PR:
+
+1. **Rustfmt** — Code formatting check
+2. **Cargo Deny** — Dependency security audit
+3. **Build, Test & Clippy** — Compilation, tests, and linting
+4. **CLI Smoke Tests** — End-to-end functionality tests
+
+All must pass for a PR to be mergeable.
+
+## Debugging Tips
+
+### Print debugging
+```bash
+cargo test -- --nocapture  # See println! output
+```
+
+### Run single-threaded
+```bash
+cargo test -- --test-threads=1  # Easier to read output
+```
+
+### Check what changed
+```bash
+git diff              # Unstaged changes
+git diff --cached     # Staged changes
+git log --oneline -5  # Recent commits
+```
+
+### Inspect build
+```bash
+cargo build -v  # Verbose build output
+cargo tree      # Dependency tree
+cargo check     # Fast syntax check (no linking)
+```
+
+---
+
+**Ready to contribute?** Start with [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
