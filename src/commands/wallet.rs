@@ -139,6 +139,21 @@ pub enum WalletCommands {
         /// Argon2 iteration count (requires --encrypt)
         #[arg(long, requires = "encrypt")]
         iterations: Option<u32>,
+        /// Write a pre-rotation backup snapshot to this file before generating
+        /// the new key.  The snapshot is an encrypted JSON file (same format as
+        /// `wallet export`) containing the current keypair and full rotation
+        /// history.  The previous secret key is also preserved in the in-config
+        /// rotation history entry so `wallet history` can display it later.
+        #[arg(long)]
+        backup: Option<PathBuf>,
+    },
+    /// Show the full rotation history for a wallet
+    History {
+        /// Wallet name
+        name: String,
+        /// Reveal previous secret keys stored in the rotation history
+        #[arg(long, default_value = "false")]
+        reveal: bool,
     },
     /// Export a wallet to a JSON backup file
     Export {
@@ -306,7 +321,9 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             encrypt,
             mem,
             iterations,
-        } => rotate_wallet(name, fund, network, encrypt, mem, iterations),
+            backup,
+        } => rotate_wallet(name, fund, network, encrypt, mem, iterations, backup),
+        WalletCommands::History { name, reveal } => wallet_history(name, reveal),
         WalletCommands::Export { name, all, output } => export_wallet(name, all, output),
         WalletCommands::Import {
             name,
@@ -978,6 +995,7 @@ fn rotate_wallet(
     encrypt: bool,
     mem: Option<u32>,
     iterations: Option<u32>,
+    backup: Option<PathBuf>,
 ) -> Result<()> {
     config::validate_wallet_name(&name)?;
     let mut cfg = config::load()?;
@@ -989,15 +1007,46 @@ fn rotate_wallet(
 
     let stored_network = cfg.wallets[wallet_index].network.clone();
     let original_public_key = cfg.wallets[wallet_index].public_key.clone();
+    let original_secret_key = cfg.wallets[wallet_index].secret_key.clone();
     let original_funded = cfg.wallets[wallet_index].funded;
     let network = network_override.unwrap_or(stored_network);
 
-    let steps = if fund { 3 } else { 2 };
+    let preserve_secret = backup.is_some();
+    let steps = if fund { 4 } else { 3 };
     p::header(&format!("Rotating wallet '{}'", name));
     p::kv("Old Public Key", &original_public_key);
     p::kv("Network", &network);
 
-    p::step(1, steps, "Generating replacement keypair...");
+    // ── Step 1: optional pre-rotation backup snapshot ────────────────────────
+    if let Some(ref backup_path) = backup {
+        p::step(1, steps, "Writing pre-rotation backup snapshot...");
+        let snapshot = WalletBackup {
+            version: WALLET_BACKUP_VERSION.to_string(),
+            exported_at: Utc::now().to_rfc3339(),
+            wallets: vec![WalletBackupEntry::from(&cfg.wallets[wallet_index])],
+        };
+        let json = serde_json::to_string_pretty(&snapshot)
+            .context("Failed to serialize backup snapshot")?;
+        if let Some(parent) = backup_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create {}", parent.display()))?;
+            }
+        }
+        let passphrase = crypto::prompt_passphrase(
+            "Set a passphrase to encrypt the backup snapshot",
+            false,
+        )?;
+        let encrypted = crypto::encrypt_secret(&passphrase, &json, None)?;
+        fs::write(backup_path, encrypted)
+            .with_context(|| format!("Failed to write backup to {}", backup_path.display()))?;
+        p::success(&format!("Backup written to {}", backup_path.display()));
+        p::info("Keep this file safe — it contains the previous secret key.");
+    } else {
+        p::step(1, steps, "Skipping backup (pass --backup <file> to save a snapshot)...");
+    }
+
+    p::step(2, steps, "Generating replacement keypair...");
     let (public_key, secret_key) = generate_keypair();
 
     let secret_to_store = if encrypt {
@@ -1010,11 +1059,7 @@ fn rotate_wallet(
         secret_key.clone()
     };
 
-    p::step(
-        2,
-        steps,
-        "Archiving previous public key in config metadata...",
-    );
+    p::step(3, steps, "Archiving previous keypair in rotation history...");
     {
         let wallet = &mut cfg.wallets[wallet_index];
         wallet.rotation_history.push(config::WalletRotationRecord {
@@ -1022,6 +1067,7 @@ fn rotate_wallet(
             previous_public_key: original_public_key.clone(),
             previous_network: wallet.network.clone(),
             previous_funded: wallet.funded,
+            previous_secret_key: if preserve_secret { original_secret_key } else { None },
         });
         wallet.public_key = public_key.clone();
         wallet.secret_key = Some(secret_to_store);
@@ -1033,7 +1079,7 @@ fn rotate_wallet(
         if network == "mainnet" {
             p::warn("Friendbot is not available on Mainnet. Skipping fund step.");
         } else {
-            p::step(3, steps, "Funding the replacement wallet via Friendbot...");
+            p::step(4, steps, "Funding the replacement wallet via Friendbot...");
             match horizon::fund_account(&public_key, &network) {
                 Ok(_) => {
                     if let Some(wallet) = cfg.wallets.iter_mut().find(|wallet| wallet.name == name)
@@ -1058,6 +1104,73 @@ fn rotate_wallet(
     if original_funded {
         p::info("The previous key remains an on-chain account; rotation only updates the local wallet mapping.");
     }
+    if preserve_secret {
+        p::info("Previous secret key preserved in rotation history. View with: starforge wallet history <name> --reveal");
+    }
+    Ok(())
+}
+
+fn wallet_history(name: String, reveal: bool) -> Result<()> {
+    config::validate_wallet_name(&name)?;
+    let cfg = config::load()?;
+    let wallet = cfg
+        .wallets
+        .iter()
+        .find(|w| w.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", name))?;
+
+    p::header(&format!("Rotation history for '{}'", name));
+    p::kv_accent("Current Public Key", &wallet.public_key);
+    p::kv("Network", &wallet.network);
+    p::kv("Funded", if wallet.funded { "yes" } else { "no" });
+
+    if wallet.rotation_history.is_empty() {
+        println!();
+        p::info("No rotations recorded. This wallet has never been rotated.");
+        return Ok(());
+    }
+
+    p::kv("Total rotations", &wallet.rotation_history.len().to_string());
+    p::separator();
+
+    for (i, record) in wallet.rotation_history.iter().enumerate().rev() {
+        println!("  Rotation #{}", i + 1);
+        p::kv("  Rotated At", &record.rotated_at);
+        p::kv("  Previous Public Key", &record.previous_public_key);
+        p::kv("  Previous Network", &record.previous_network);
+        p::kv("  Was Funded", if record.previous_funded { "yes" } else { "no" });
+
+        match &record.previous_secret_key {
+            Some(sk) if reveal => {
+                if sk.contains(':') {
+                    // Encrypted bundle — prompt for passphrase
+                    let pwd = crypto::prompt_password(
+                        &format!("Enter passphrase to decrypt previous key for rotation #{}", i + 1),
+                        false,
+                    )?;
+                    match crypto::decrypt_secret(&pwd, sk) {
+                        Ok(plain) => p::kv("  Previous Secret Key", &plain),
+                        Err(_) => p::warn("  Could not decrypt previous secret key (wrong passphrase?)"),
+                    }
+                } else {
+                    p::kv("  Previous Secret Key", sk);
+                }
+            }
+            Some(_) => {
+                p::kv("  Previous Secret Key", "(stored — use --reveal to show)");
+            }
+            None => {
+                p::kv("  Previous Secret Key", "(not preserved — use --backup on next rotation)");
+            }
+        }
+
+        if i > 0 {
+            println!();
+        }
+    }
+
+    p::separator();
+    p::info("To export a full backup: starforge wallet export --name <name> --output backup.json");
     Ok(())
 }
 
@@ -1258,6 +1371,7 @@ fn import_wallets(file: PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::generate_keypair;
+    use crate::utils::config::{WalletEntry, WalletRotationRecord};
     use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
     use std::collections::HashSet;
     use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
@@ -1290,6 +1404,93 @@ mod tests {
             let signature = signing_key.sign(message);
             verifying_key.verify(message, &signature).unwrap();
         }
+    }
+
+    // ── Rotation history / backup tests ─────────────────────────────────────
+
+    fn make_wallet(name: &str, public_key: &str) -> WalletEntry {
+        WalletEntry {
+            name: name.to_string(),
+            public_key: public_key.to_string(),
+            secret_key: Some("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
+            network: "testnet".to_string(),
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            funded: true,
+            rotation_history: vec![],
+        }
+    }
+
+    #[test]
+    fn rotation_record_without_backup_has_no_secret() {
+        let record = WalletRotationRecord {
+            rotated_at: "2025-06-01T00:00:00Z".to_string(),
+            previous_public_key: "GABC".to_string(),
+            previous_network: "testnet".to_string(),
+            previous_funded: true,
+            previous_secret_key: None,
+        };
+        assert!(record.previous_secret_key.is_none());
+    }
+
+    #[test]
+    fn rotation_record_with_backup_preserves_secret() {
+        let secret = "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let record = WalletRotationRecord {
+            rotated_at: "2025-06-01T00:00:00Z".to_string(),
+            previous_public_key: "GABC".to_string(),
+            previous_network: "testnet".to_string(),
+            previous_funded: true,
+            previous_secret_key: Some(secret.to_string()),
+        };
+        assert_eq!(record.previous_secret_key.as_deref(), Some(secret));
+    }
+
+    #[test]
+    fn rotation_history_accumulates_across_multiple_rotations() {
+        let mut wallet = make_wallet("alice", "GABC");
+
+        // Simulate two rotations
+        for i in 0..2 {
+            wallet.rotation_history.push(WalletRotationRecord {
+                rotated_at: format!("2025-0{}-01T00:00:00Z", i + 1),
+                previous_public_key: format!("GPREV{}", i),
+                previous_network: "testnet".to_string(),
+                previous_funded: false,
+                previous_secret_key: Some(format!("SPREV{}", i)),
+            });
+        }
+
+        assert_eq!(wallet.rotation_history.len(), 2);
+        assert_eq!(wallet.rotation_history[0].previous_public_key, "GPREV0");
+        assert_eq!(wallet.rotation_history[1].previous_public_key, "GPREV1");
+    }
+
+    #[test]
+    fn rotation_record_serialises_without_secret_when_none() {
+        let record = WalletRotationRecord {
+            rotated_at: "2025-06-01T00:00:00Z".to_string(),
+            previous_public_key: "GABC".to_string(),
+            previous_network: "testnet".to_string(),
+            previous_funded: false,
+            previous_secret_key: None,
+        };
+        let json = serde_json::to_string(&record).unwrap();
+        // previous_secret_key should be omitted entirely (skip_serializing_if)
+        assert!(!json.contains("previous_secret_key"));
+    }
+
+    #[test]
+    fn rotation_record_serialises_with_secret_when_present() {
+        let record = WalletRotationRecord {
+            rotated_at: "2025-06-01T00:00:00Z".to_string(),
+            previous_public_key: "GABC".to_string(),
+            previous_network: "testnet".to_string(),
+            previous_funded: false,
+            previous_secret_key: Some("SKEY".to_string()),
+        };
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(json.contains("previous_secret_key"));
+        assert!(json.contains("SKEY"));
     }
 }
 
