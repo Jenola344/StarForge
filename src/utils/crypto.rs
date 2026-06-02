@@ -215,19 +215,21 @@ pub fn prompt_passphrase(prompt: &str, strict: bool) -> Result<String> {
 
 // ── Argon2 KDF tuning ─────────────────────────────────────────────────────────
 
-/// Optional Argon2 parameters for wallet encryption (`m_cost` / `t_cost`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Optional Argon2 parameters for wallet encryption (`m_cost` / `t_cost` / `p_cost`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KdfOptions {
     /// Memory cost in KiB blocks (`m_cost`). Uses the Argon2 default when unset.
     pub mem: Option<u32>,
     /// Iteration count (`t_cost`). Uses the Argon2 default when unset.
     pub iterations: Option<u32>,
+    /// Parallelism factor (`p_cost`). Uses the Argon2 default when unset.
+    pub parallelism: Option<u32>,
 }
 
 impl KdfOptions {
-    /// True when both fields are unset (library defaults apply).
+    /// True when all fields are unset (library defaults apply).
     pub fn is_default(&self) -> bool {
-        self.mem.is_none() && self.iterations.is_none()
+        self.mem.is_none() && self.iterations.is_none() && self.parallelism.is_none()
     }
 }
 
@@ -239,7 +241,10 @@ fn resolve_params(options: Option<&KdfOptions>) -> Result<Params> {
     let t_cost = options
         .and_then(|o| o.iterations)
         .unwrap_or_else(|| defaults.t_cost());
-    Params::new(m_cost, t_cost, defaults.p_cost(), None)
+    let p_cost = options
+        .and_then(|o| o.parallelism)
+        .unwrap_or_else(|| defaults.p_cost());
+    Params::new(m_cost, t_cost, p_cost, None)
         .map_err(|e| anyhow!("Invalid Argon2 parameters: {}", e))
 }
 
@@ -273,6 +278,31 @@ fn parse_encrypted_bundle(bundle: &str) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Op
                 Some(KdfOptions {
                     mem: Some(mem),
                     iterations: Some(iterations),
+                    parallelism: None,
+                }),
+            ))
+        }
+        6 => {
+            let salt = BASE64.decode(parts[0])?;
+            let nonce_bytes = BASE64.decode(parts[1])?;
+            let ciphertext = BASE64.decode(parts[2])?;
+            let mem = parts[3]
+                .parse::<u32>()
+                .map_err(|_| anyhow!("Invalid encrypted bundle: bad mem cost"))?;
+            let iterations = parts[4]
+                .parse::<u32>()
+                .map_err(|_| anyhow!("Invalid encrypted bundle: bad iteration count"))?;
+            let parallelism = parts[5]
+                .parse::<u32>()
+                .map_err(|_| anyhow!("Invalid encrypted bundle: bad parallelism factor"))?;
+            Ok((
+                salt,
+                nonce_bytes,
+                ciphertext,
+                Some(KdfOptions {
+                    mem: Some(mem),
+                    iterations: Some(iterations),
+                    parallelism: Some(parallelism),
                 }),
             ))
         }
@@ -329,12 +359,13 @@ pub fn encrypt_secret(password: &str, secret: &str, kdf: Option<&KdfOptions>) ->
         ))
     } else {
         Ok(format!(
-            "{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             encoded_salt,
             encoded_nonce,
             encoded_cipher,
             params.m_cost(),
-            params.t_cost()
+            params.t_cost(),
+            params.p_cost()
         ))
     }
 }
@@ -455,11 +486,12 @@ mod tests {
         let kdf = KdfOptions {
             mem: Some(32_768),
             iterations: Some(4),
+            parallelism: Some(2),
         };
 
         let encrypted = encrypt_secret(password, secret, Some(&kdf)).unwrap();
         let parts: Vec<&str> = encrypted.split(':').collect();
-        assert_eq!(parts.len(), 5, "expected mem/iterations in bundle");
+        assert_eq!(parts.len(), 6, "expected mem/iterations/parallelism in bundle");
 
         let decrypted = decrypt_secret(password, &encrypted).unwrap();
         assert_eq!(secret, decrypted);

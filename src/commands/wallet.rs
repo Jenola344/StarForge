@@ -13,12 +13,27 @@ use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as Stel
 
 const WALLET_BACKUP_VERSION: &str = "1";
 
-fn kdf_options(mem: Option<u32>, iterations: Option<u32>) -> Option<crypto::KdfOptions> {
-    if mem.is_none() && iterations.is_none() {
-        None
-    } else {
-        Some(crypto::KdfOptions { mem, iterations })
+fn kdf_options(
+    mem: Option<u32>,
+    iterations: Option<u32>,
+    parallelism: Option<u32>,
+    config_default: Option<&crypto::KdfOptions>,
+) -> Option<crypto::KdfOptions> {
+    if mem.is_none() && iterations.is_none() && parallelism.is_none() && config_default.is_none() {
+        return None;
     }
+
+    let mut options = config_default.cloned().unwrap_or_default();
+    if let Some(m) = mem {
+        options.mem = Some(m);
+    }
+    if let Some(i) = iterations {
+        options.iterations = Some(i);
+    }
+    if let Some(p) = parallelism {
+        options.parallelism = Some(p);
+    }
+    Some(options)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +94,15 @@ pub enum WalletCommands {
         /// Account index for SEP-0005 path m/44'/148'/index' (requires --mnemonic)
         #[arg(long, default_value = "0", requires = "mnemonic")]
         account_index: u32,
+        /// Argon2 memory cost in KiB (requires --encrypt)
+        #[arg(long, requires = "encrypt")]
+        mem: Option<u32>,
+        /// Argon2 iteration count (requires --encrypt)
+        #[arg(long, requires = "encrypt")]
+        iterations: Option<u32>,
+        /// Argon2 parallelism factor (requires --encrypt)
+        #[arg(long, requires = "encrypt")]
+        parallelism: Option<u32>,
     },
     /// List all saved wallets
     List,
@@ -139,6 +163,9 @@ pub enum WalletCommands {
         /// Argon2 iteration count (requires --encrypt)
         #[arg(long, requires = "encrypt")]
         iterations: Option<u32>,
+        /// Argon2 parallelism factor (requires --encrypt)
+        #[arg(long, requires = "encrypt")]
+        parallelism: Option<u32>,
     },
     /// Export a wallet to a JSON backup file
     Export {
@@ -277,6 +304,9 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             mnemonic: use_mnemonic,
             words,
             account_index,
+            mem,
+            iterations,
+            parallelism,
         } => create(
             name,
             fund,
@@ -286,6 +316,9 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             use_mnemonic,
             words,
             account_index,
+            mem,
+            iterations,
+            parallelism,
         ),
         WalletCommands::List => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
@@ -306,7 +339,8 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             encrypt,
             mem,
             iterations,
-        } => rotate_wallet(name, fund, network, encrypt, mem, iterations),
+            parallelism,
+        } => rotate_wallet(name, fund, network, encrypt, mem, iterations, parallelism),
         WalletCommands::Export { name, all, output } => export_wallet(name, all, output),
         WalletCommands::Import {
             name,
@@ -467,6 +501,9 @@ fn create(
     use_mnemonic: bool,
     words: String,
     account_index: u32,
+    mem: Option<u32>,
+    iterations: Option<u32>,
+    parallelism: Option<u32>,
 ) -> Result<()> {
     let mut cfg = config::load()?;
 
@@ -518,7 +555,11 @@ fn create(
         }
         println!();
         let pwd = crypto::prompt_passphrase("Set a passphrase to encrypt this wallet", strict)?;
-        crypto::encrypt_secret(&pwd, &secret_key, None)?
+        crypto::encrypt_secret(
+            &pwd,
+            &secret_key,
+            kdf_options(mem, iterations, parallelism, cfg.wallet_encryption.as_ref()).as_ref(),
+        )?
     } else {
         secret_key.clone()
     };
@@ -978,6 +1019,7 @@ fn rotate_wallet(
     encrypt: bool,
     mem: Option<u32>,
     iterations: Option<u32>,
+    parallelism: Option<u32>,
 ) -> Result<()> {
     config::validate_wallet_name(&name)?;
     let mut cfg = config::load()?;
@@ -1005,7 +1047,11 @@ fn rotate_wallet(
             "Set a secure passphrase to encrypt the rotated wallet",
             true,
         )?;
-        crypto::encrypt_secret(&pwd, &secret_key, kdf_options(mem, iterations).as_ref())?
+        crypto::encrypt_secret(
+            &pwd,
+            &secret_key,
+            kdf_options(mem, iterations, parallelism, cfg.wallet_encryption.as_ref()).as_ref(),
+        )?
     } else {
         secret_key.clone()
     };
@@ -1100,7 +1146,11 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf) -> Result
     let json = serde_json::to_string_pretty(&backup)
         .with_context(|| "Failed to serialize wallet backup")?;
     let passphrase = crypto::prompt_passphrase("Enter passphrase to encrypt backup", false)?;
-    let encrypted = crypto::encrypt_secret(&passphrase, &json, None)?;
+    let encrypted = crypto::encrypt_secret(
+        &passphrase,
+        &json,
+        kdf_options(None, None, None, cfg.wallet_encryption.as_ref()).as_ref(),
+    )?;
     fs::write(&output, encrypted)
         .with_context(|| format!("Failed to write {}", output.display()))?;
 
@@ -1161,7 +1211,11 @@ fn import_from_mnemonic(
     let secret_to_store = if encrypt {
         println!();
         let pwd = crypto::prompt_passphrase("Set a passphrase to encrypt this wallet", false)?;
-        crypto::encrypt_secret(&pwd, &secret_key, None)?
+        crypto::encrypt_secret(
+            &pwd,
+            &secret_key,
+            kdf_options(None, None, None, cfg.wallet_encryption.as_ref()).as_ref(),
+        )?
     } else {
         secret_key
     };
