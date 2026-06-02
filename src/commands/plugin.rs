@@ -1,7 +1,7 @@
 use crate::plugins::interface::CORE_VERSION;
 use crate::plugins::manifest;
 use crate::plugins::registry::{self, RegisteredCommand, TrustLevel, UninstallOptions};
-use crate::plugins::PluginManager;
+use crate::plugins::{PluginLoadError, PluginManager};
 use crate::utils::print as p;
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -205,26 +205,54 @@ fn load() -> Result<()> {
     }
 
     let mut pm = PluginManager::new();
+    let mut failed: Vec<(String, PluginLoadError)> = Vec::new();
+
     for pl in &reg.plugins {
-        unsafe {
-            pm.load_plugin(&pl.path)
-                .with_context(|| format!("Failed to load plugin '{}' from {}", pl.name, pl.path))?;
+        match unsafe { pm.load_plugin_diagnosed(&pl.path) } {
+            Ok(()) => {}
+            Err(e) => failed.push((pl.name.clone(), e)),
         }
     }
 
+    // ── Report failures with structured diagnostics ──────────────────────────
+    if !failed.is_empty() {
+        p::warn(&format!(
+            "{} plugin(s) failed to load:",
+            failed.len()
+        ));
+        for (name, err) in &failed {
+            println!();
+            p::error(&format!("[{}] {}", err.category(), name));
+            for line in err.diagnostic().lines() {
+                println!("  {}", line);
+            }
+        }
+        println!();
+    }
+
     let loaded = pm.list_plugins();
-    if loaded.is_empty() {
+    if loaded.is_empty() && failed.is_empty() {
         p::warn("No plugins loaded.");
         return Ok(());
     }
 
-    p::kv("StarForge core version", CORE_VERSION);
-    p::separator();
-    for (name, desc, built_for) in loaded {
-        p::kv_accent(name, desc);
-        p::kv("Built for StarForge", built_for);
+    if !loaded.is_empty() {
+        p::kv("StarForge core version", CORE_VERSION);
+        p::separator();
+        for (name, desc, built_for) in loaded {
+            p::kv_accent(name, desc);
+            p::kv("Built for StarForge", built_for);
+        }
+        p::separator();
     }
-    p::separator();
+
+    if !failed.is_empty() {
+        anyhow::bail!(
+            "{} plugin(s) failed to load. See diagnostics above.",
+            failed.len()
+        );
+    }
+
     Ok(())
 }
 
