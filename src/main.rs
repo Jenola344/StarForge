@@ -56,6 +56,13 @@ enum Commands {
     Deploy(commands::deploy::DeployArgs),
     /// Show starforge config and environment info
     Info,
+    /// Manage starforge configuration (telemetry, network)
+    #[command(subcommand)]
+    Config(commands::config::ConfigCommands),
+
+    /// Manage global configuration
+    #[command(subcommand)]
+    Config(commands::config::ConfigCommands),
 
     Tx(commands::tx::TxArgs), // fetch transaction for the account
 
@@ -132,6 +139,7 @@ fn main() {
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
         Commands::Info => "info",
+        Commands::Config(_) => "config",
         Commands::Tx(_) => "tx",
         Commands::Network(_) => "network",
         Commands::Node(_) => "node",
@@ -159,6 +167,7 @@ fn main() {
         Commands::Inspect(cmd) => commands::inspect::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info => commands::info::handle(),
+        Commands::Config(cmd) => commands::config::handle(cmd),
         Commands::Tx(args) => commands::tx::handle(args),
         Commands::Network(cmd) => commands::network::handle(cmd),
         Commands::Node(cmd) => commands::node::handle(cmd),
@@ -209,6 +218,19 @@ fn handle_external_plugin(args: Vec<String>) -> anyhow::Result<()> {
             "Unknown command '{}'. No plugins installed.\n\nTry: starforge plugin install <name> --path <lib>",
             plugin_name
         );
+    }
+
+    // Check if the command matches any registered plugin command before loading .so files.
+    let all_commands = plugins::registry::load_all_registered_commands();
+    let known = all_commands.iter().any(|c| c.name == *plugin_name);
+    if !known {
+        let available: Vec<String> = all_commands.iter().map(|c| format!("  • {}", c.name)).collect();
+        let hint = if available.is_empty() {
+            "No plugin commands registered. Re-install plugins to discover their commands.".to_string()
+        } else {
+            format!("Available plugin commands:\n{}", available.join("\n"))
+        };
+        anyhow::bail!("Unknown command '{}'.\n\n{}", plugin_name, hint);
     }
 
     // Warn about unknown-trust plugins before loading.
