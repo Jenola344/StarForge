@@ -75,16 +75,9 @@ pub struct InstalledPlugin {
     /// Plugin version from manifest.
     #[serde(default)]
     pub plugin_version: String,
-    /// Commands registered by this plugin (name → description).
+    /// RFC3339 timestamp of when the plugin was installed.
     #[serde(default)]
-    pub commands: Vec<RegisteredCommand>,
-}
-
-/// A command entry persisted in the registry so it is visible without loading the .so.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegisteredCommand {
-    pub name: String,
-    pub description: String,
+    pub installed_at: Option<String>,
 }
 
 fn registry_path() -> Result<PathBuf> {
@@ -170,6 +163,8 @@ pub fn install_plugin(
     }
 
     let trust = classify_source(source);
+    let now = chrono::Utc::now().to_rfc3339();
+
     let mut reg = load_registry().unwrap_or_default();
     reg.plugins.retain(|p| p.name != name);
     reg.plugins.push(InstalledPlugin {
@@ -179,7 +174,7 @@ pub fn install_plugin(
         trust,
         starforge_version: starforge_version.to_string(),
         plugin_version: plugin_version.to_string(),
-        commands,
+        installed_at: Some(now),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;
@@ -297,6 +292,15 @@ fn candidate_library_names(name: &str) -> Vec<String> {
     } else {
         vec![format!("{base}.so")]
     }
+}
+
+pub fn get_installed_plugin_version(name: &str) -> Option<String> {
+    load_registry()
+        .ok()?
+        .plugins
+        .iter()
+        .find(|p| p.name == name)
+        .map(|p| p.plugin_version.clone())
 }
 
 #[cfg(test)]

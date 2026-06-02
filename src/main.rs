@@ -60,6 +60,10 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
+    /// Manage global configuration
+    #[command(subcommand)]
+    Config(commands::config::ConfigCommands),
+
     Tx(commands::tx::TxArgs), // fetch transaction for the account
 
     /// View or switch the active network (testnet/mainnet)
@@ -169,7 +173,7 @@ fn main() {
         Commands::Inspect(cmd) => commands::inspect::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info => commands::info::handle(),
-        Commands::Config(cmd) => commands::config::handle_config(cmd),
+        Commands::Config(cmd) => commands::config::handle(cmd),
         Commands::Tx(args) => commands::tx::handle(args),
         Commands::Network(cmd) => commands::network::handle(cmd),
         Commands::Node(cmd) => commands::node::handle(cmd),
