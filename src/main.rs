@@ -103,6 +103,9 @@ enum Commands {
     /// Static analysis and linting for Soroban contracts
     Lint(commands::lint::LintArgs),
 
+    /// Run connectivity diagnostics for attached Ledger/Trezor devices
+    Diagnostics(commands::diagnostics::DiagnosticsArgs),
+
     /// Execute an installed plugin command (e.g. `starforge defi ...`)
     #[command(external_subcommand)]
     External(Vec<String>),
@@ -143,6 +146,7 @@ fn main() {
         Commands::Template(_) => "template",
         Commands::Upgrade(_) => "upgrade",
         Commands::Lint(_) => "lint",
+        Commands::Diagnostics(_) => "diagnostics",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -169,6 +173,7 @@ fn main() {
         Commands::Template(args) => commands::template::handle(args),
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd),
         Commands::Lint(args) => commands::lint::handle(args),
+        Commands::Diagnostics(args) => commands::diagnostics::handle(args),
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
