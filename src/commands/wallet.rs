@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 use crate::utils::{
     config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, print as p,
 };
