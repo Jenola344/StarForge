@@ -636,10 +636,7 @@ pub fn rename_custom_network(config: &mut Config, old_name: &str, new_name: &str
         anyhow::bail!("Old and new network names are the same");
     }
 
-    let net_cfg = config
-        .networks
-        .remove(old_name)
-        .expect("network exists");
+    let net_cfg = config.networks.remove(old_name).expect("network exists");
     config.networks.insert(new_name.to_string(), net_cfg);
 
     if config.network == old_name {

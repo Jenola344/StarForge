@@ -1,12 +1,12 @@
 use crate::plugins::interface::{
     is_core_version_compatible, Plugin, PluginDeclaration, PluginRegistrar, RUSTC_VERSION,
 };
-use std::path::Path;
 use crate::plugins::manifest;
 use anyhow::{Context, Result};
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::path::Path;
 use std::rc::Rc;
 
 pub struct PluginManager {

@@ -4,7 +4,6 @@ use crate::plugins::registry::{self, TrustLevel, UninstallOptions};
 use crate::plugins::PluginManager;
 use crate::utils::print as p;
 use anyhow::{Context, Result};
-use chrono;
 use clap::Subcommand;
 use std::path::PathBuf;
 
@@ -118,7 +117,10 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
     p::kv_accent("Name", &name);
     p::kv("Library", &lib_path.display().to_string());
     p::kv("Plugin version", &plugin_manifest.version);
-    p::kv("StarForge compatibility", &plugin_manifest.starforge_version);
+    p::kv(
+        "StarForge compatibility",
+        &plugin_manifest.starforge_version,
+    );
     p::kv("Trust", trust.label());
     if !source_str.is_empty() {
         p::kv("Source", source_str);
@@ -202,16 +204,12 @@ fn load() -> Result<()> {
 
 fn uninstall(name: String, purge: bool, yes: bool) -> Result<()> {
     let reg = registry::load_registry().unwrap_or_default();
-    let plugin = reg
-        .plugins
-        .iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Plugin '{}' is not installed. Run `starforge plugin list` to see installed plugins.",
-                name
-            )
-        })?;
+    let plugin = reg.plugins.iter().find(|p| p.name == name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Plugin '{}' is not installed. Run `starforge plugin list` to see installed plugins.",
+            name
+        )
+    })?;
 
     let lib_path = PathBuf::from(&plugin.path);
     let lib_exists = lib_path.exists();
@@ -279,7 +277,10 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
         Some(n) => {
             let found: Vec<_> = reg.plugins.iter().filter(|p| &p.name == n).collect();
             if found.is_empty() {
-                anyhow::bail!("Plugin '{}' is not installed. Run `starforge plugin list`.", n);
+                anyhow::bail!(
+                    "Plugin '{}' is not installed. Run `starforge plugin list`.",
+                    n
+                );
             }
             found
         }
@@ -316,9 +317,6 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                 pl.name
             ));
             p::kv("  Path", &pl.path);
-            if let Some(ref ts) = pl.installed_at {
-                p::kv("  Installed at", ts);
-            }
             skipped += 1;
             println!();
             continue;
@@ -356,7 +354,13 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
 
             match status {
                 Ok(s) if s.success() => {
-                    registry::install_plugin(&pl.name, std::path::Path::new(&pl.path), &pl.source)?;
+                    registry::install_plugin(
+                        &pl.name,
+                        std::path::Path::new(&pl.path),
+                        &pl.source,
+                        &pl.starforge_version,
+                        &pl.plugin_version,
+                    )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
                     updated += 1;
                 }
@@ -368,54 +372,32 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                     failed += 1;
                 }
                 Err(e) => {
-                    p::warn(&format!("  Failed to run cargo: {}. Is Cargo installed?", e));
+                    p::warn(&format!(
+                        "  Failed to run cargo: {}. Is Cargo installed?",
+                        e
+                    ));
                     failed += 1;
                 }
             }
         } else {
-            // For GitHub and other sources, check if the library file on disk
-            // has been updated since install and refresh the registry timestamp.
+            // For GitHub and other sources, check if the library file on disk exists
+            // and refresh the registry metadata.
             let metadata = std::fs::metadata(&pl.path);
             match metadata {
-                Ok(m) => {
-                    let modified = m
-                        .modified()
-                        .ok()
-                        .and_then(|t| {
-                            t.duration_since(std::time::UNIX_EPOCH)
-                                .ok()
-                                .map(|d| d.as_secs())
-                        })
-                        .unwrap_or(0);
-
-                    let installed_epoch = pl
-                        .installed_at
-                        .as_deref()
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                        .map(|dt| dt.timestamp() as u64)
-                        .unwrap_or(0);
-
-                    if modified > installed_epoch {
-                        // Library on disk is newer — refresh the registry entry.
-                        registry::install_plugin(
-                            &pl.name,
-                            std::path::Path::new(&pl.path),
-                            &pl.source,
-                        )?;
-                        p::success(&format!(
-                            "  '{}' library on disk is newer — registry refreshed.",
-                            pl.name
-                        ));
-                        updated += 1;
-                    } else {
-                        p::info(&format!(
-                            "  '{}' is already up to date. Source: {}",
-                            pl.name, pl.source
-                        ));
-                        p::info("  To update manually: replace the library at the registered path,");
-                        p::info(&format!("  then run: starforge plugin update {}", pl.name));
-                        skipped += 1;
-                    }
+                Ok(_m) => {
+                    // Library exists on disk — refresh the registry entry with current metadata.
+                    registry::install_plugin(
+                        &pl.name,
+                        std::path::Path::new(&pl.path),
+                        &pl.source,
+                        &pl.starforge_version,
+                        &pl.plugin_version,
+                    )?;
+                    p::success(&format!(
+                        "  '{}' library on disk verified — registry refreshed.",
+                        pl.name
+                    ));
+                    updated += 1;
                 }
                 Err(e) => {
                     p::warn(&format!("  Could not read library metadata: {}", e));

@@ -147,22 +147,44 @@ mod tests {
 
     #[test]
     fn sep0005_derives_all_10_accounts_12_words() {
-        let phrase = "letter advice cage absurd amount doctor acoustic avoid letter advice cage above";
+        let phrase =
+            "letter advice cage absurd amount doctor acoustic avoid letter advice cage above";
         let passphrase = "";
 
         let mut addresses = Vec::new();
         for index in 0..10 {
             let (public_key, secret_key) = keypair_from_phrase(phrase, passphrase, index).unwrap();
-            assert!(public_key.starts_with('G'), "Invalid public key for index {}", index);
-            assert!(secret_key.starts_with('S'), "Invalid secret key for index {}", index);
-            assert_eq!(public_key.len(), 56, "Public key has wrong length for index {}", index);
-            assert_eq!(secret_key.len(), 56, "Secret key has wrong length for index {}", index);
+            assert!(
+                public_key.starts_with('G'),
+                "Invalid public key for index {}",
+                index
+            );
+            assert!(
+                secret_key.starts_with('S'),
+                "Invalid secret key for index {}",
+                index
+            );
+            assert_eq!(
+                public_key.len(),
+                56,
+                "Public key has wrong length for index {}",
+                index
+            );
+            assert_eq!(
+                secret_key.len(),
+                56,
+                "Secret key has wrong length for index {}",
+                index
+            );
             addresses.push(public_key);
         }
 
         let mut unique = std::collections::HashSet::new();
         for addr in &addresses {
-            assert!(unique.insert(addr.clone()), "Duplicate address at some index");
+            assert!(
+                unique.insert(addr.clone()),
+                "Duplicate address at some index"
+            );
         }
         assert_eq!(unique.len(), 10, "All 10 addresses must be unique");
     }
@@ -175,16 +197,37 @@ mod tests {
         let mut addresses = Vec::new();
         for index in 0..10 {
             let (public_key, secret_key) = keypair_from_phrase(phrase, passphrase, index).unwrap();
-            assert!(public_key.starts_with('G'), "Invalid public key for index {}", index);
-            assert!(secret_key.starts_with('S'), "Invalid secret key for index {}", index);
-            assert_eq!(public_key.len(), 56, "Public key has wrong length for index {}", index);
-            assert_eq!(secret_key.len(), 56, "Secret key has wrong length for index {}", index);
+            assert!(
+                public_key.starts_with('G'),
+                "Invalid public key for index {}",
+                index
+            );
+            assert!(
+                secret_key.starts_with('S'),
+                "Invalid secret key for index {}",
+                index
+            );
+            assert_eq!(
+                public_key.len(),
+                56,
+                "Public key has wrong length for index {}",
+                index
+            );
+            assert_eq!(
+                secret_key.len(),
+                56,
+                "Secret key has wrong length for index {}",
+                index
+            );
             addresses.push(public_key);
         }
 
         let mut unique = std::collections::HashSet::new();
         for addr in &addresses {
-            assert!(unique.insert(addr.clone()), "Duplicate address at some index");
+            assert!(
+                unique.insert(addr.clone()),
+                "Duplicate address at some index"
+            );
         }
         assert_eq!(unique.len(), 10, "All 10 addresses must be unique");
     }

@@ -1328,17 +1328,20 @@ fn derive_addresses() -> Result<()> {
                 println!();
             }
             Err(e) => {
-                p::warn(&format!("Failed to derive account {}: {}", account_index, e));
+                p::warn(&format!(
+                    "Failed to derive account {}: {}",
+                    account_index, e
+                ));
                 println!();
             }
         }
     }
 
     p::separator();
-    p::info(&format!(
+    p::info(
         "These addresses are derived deterministically from your recovery phrase. \
-         Entering the same phrase will always produce the same addresses."
-    ));
+         Entering the same phrase will always produce the same addresses.",
+    );
     p::warn("Do not share your recovery phrase with anyone. Anyone with it can access all these addresses.");
     Ok(())
 }

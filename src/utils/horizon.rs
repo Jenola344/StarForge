@@ -533,15 +533,20 @@ mod tests {
     use crate::utils::config::{self, Config, NetworkConfig};
     use mockito::{Matcher, Server};
     use std::collections::HashMap;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    static TEST_CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
     struct TestConfigGuard {
         _temp_dir: TempDir,
         original_home: Option<String>,
+        _lock: std::sync::MutexGuard<'static, ()>,
     }
 
     impl TestConfigGuard {
         fn new(horizon_url: &str, friendbot_url: Option<String>) -> Self {
+            let lock = TEST_CONFIG_LOCK.lock().unwrap();
             let temp_dir = tempfile::tempdir().expect("temp dir");
             let original_home = std::env::var("HOME").ok();
 
@@ -572,6 +577,7 @@ mod tests {
             Self {
                 _temp_dir: temp_dir,
                 original_home,
+                _lock: lock,
             }
         }
     }

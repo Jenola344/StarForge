@@ -361,9 +361,7 @@ pub fn extract_zip_archive(archive: &Path, dest: &Path) -> Result<()> {
     let mut archive = ZipArchive::new(file)
         .with_context(|| format!("Failed to read ZIP archive {}", archive.display()))?;
 
-    let dest_canon = dest
-        .canonicalize()
-        .unwrap_or_else(|_| dest.to_path_buf());
+    let dest_canon = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
@@ -421,7 +419,8 @@ pub fn normalize_template_root(path: &Path) -> Result<PathBuf> {
 /// Resolve a template path: directories are used as-is; ZIP archives are extracted to a temp dir.
 pub fn resolve_template_source(path: &Path) -> Result<(PathBuf, Option<tempfile::TempDir>)> {
     if is_archive_path(path) {
-        let temp = tempfile::tempdir().context("Failed to create temp dir for archive extraction")?;
+        let temp =
+            tempfile::tempdir().context("Failed to create temp dir for archive extraction")?;
         extract_zip_archive(path, temp.path())?;
         let root = normalize_template_root(temp.path())?;
         Ok((root, Some(temp)))
@@ -968,6 +967,10 @@ pub fn install_template_package(
         version,
         cli_version_min,
         cli_version_max,
+        None,
+        None,
+        None,
+        None,
     )
 }
 
@@ -1040,7 +1043,15 @@ pub fn validate_template_structure(
     author: &str,
     version: &str,
 ) -> Result<()> {
-    validate_template_structure_with_constraints(path, name, description, author, version, None, None)
+    validate_template_structure_with_constraints(
+        path,
+        name,
+        description,
+        author,
+        version,
+        None,
+        None,
+    )
 }
 
 /// Full validation including optional CLI version constraint format checks.
@@ -1111,7 +1122,8 @@ pub fn validate_template_structure_with_constraints(
                 anyhow::bail!(
                     "cli_version_min '{}' is greater than cli_version_max '{}'. \
                      Fix the version bounds so that min <= max.",
-                    min, max
+                    min,
+                    max
                 );
             }
         }
@@ -1230,8 +1242,7 @@ mod tests {
             let rel = entry.strip_prefix(&tpl_dir).unwrap();
             let name = rel.to_string_lossy().replace('\\', "/");
             if entry.is_dir() {
-                zip.add_directory(format!("{}/", name), options)
-                    .unwrap();
+                zip.add_directory(format!("{}/", name), options).unwrap();
             } else {
                 zip.start_file(name, options).unwrap();
                 let mut f = fs::File::open(entry).unwrap();
@@ -1243,9 +1254,7 @@ mod tests {
         let extract_dir = tmp.path().join("out");
         extract_zip_archive(&zip_path, &extract_dir).unwrap();
         let root = normalize_template_root(&extract_dir).unwrap();
-        assert!(
-            validate_template_structure(&root, "zip-tpl", "desc", "author", "1.0.0").is_ok()
-        );
+        assert!(validate_template_structure(&root, "zip-tpl", "desc", "author", "1.0.0").is_ok());
     }
 
     fn walkdir_flat(dir: &Path) -> Vec<PathBuf> {
@@ -1358,8 +1367,7 @@ mod tests {
     fn validate_rejects_bad_version_semver() {
         let tmp = tempdir().unwrap();
         make_valid_template(tmp.path());
-        let err =
-            validate_template_structure(tmp.path(), "n", "d", "a", "not-semver").unwrap_err();
+        let err = validate_template_structure(tmp.path(), "n", "d", "a", "not-semver").unwrap_err();
         assert!(err.to_string().contains("semver") || err.to_string().contains("not-semver"));
     }
 
