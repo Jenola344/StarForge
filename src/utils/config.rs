@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 use crate::utils::crypto;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};

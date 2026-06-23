@@ -533,15 +533,20 @@ mod tests {
     use crate::utils::config::{self, Config, NetworkConfig};
     use mockito::{Matcher, Server};
     use std::collections::HashMap;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    static TEST_CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
     struct TestConfigGuard {
         _temp_dir: TempDir,
         original_home: Option<String>,
+        _lock: std::sync::MutexGuard<'static, ()>,
     }
 
     impl TestConfigGuard {
         fn new(horizon_url: &str, friendbot_url: Option<String>) -> Self {
+            let lock = TEST_CONFIG_LOCK.lock().unwrap();
             let temp_dir = tempfile::tempdir().expect("temp dir");
             let original_home = std::env::var("HOME").ok();
 
@@ -574,6 +579,7 @@ mod tests {
             Self {
                 _temp_dir: temp_dir,
                 original_home,
+                _lock: lock,
             }
         }
     }
@@ -594,7 +600,7 @@ mod tests {
 
     #[test]
     fn fetch_account_returns_mocked_account() {
-        let server = Server::new();
+        let mut server = Server::new();
         let _guard = TestConfigGuard::new(&server.url(), None);
         let public_key = "GACCOUNT123";
 
@@ -620,7 +626,7 @@ mod tests {
 
     #[test]
     fn fetch_account_reports_parse_error_for_invalid_json() {
-        let server = Server::new();
+        let mut server = Server::new();
         let _guard = TestConfigGuard::new(&server.url(), None);
 
         let _mock = server
@@ -636,7 +642,7 @@ mod tests {
 
     #[test]
     fn fund_account_reports_friendbot_error_path() {
-        let server = Server::new();
+        let mut server = Server::new();
         let _guard = TestConfigGuard::new(&server.url(), Some(server.url()));
 
         let _mock = server
@@ -672,7 +678,7 @@ mod tests {
 
     #[test]
     fn fetch_transactions_filtered_uses_cursor_and_filters_records() {
-        let server = Server::new();
+        let mut server = Server::new();
         let _guard = TestConfigGuard::new(&server.url(), None);
 
         let _mock = server
