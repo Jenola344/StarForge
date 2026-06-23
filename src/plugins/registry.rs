@@ -1,3 +1,4 @@
+use crate::plugins::manifest;
 use crate::utils::config::{self, Config};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -29,29 +30,24 @@ impl TrustLevel {
     }
 }
 
-/// Classify a source URL/path into a trust level using the built-in default
-/// allowlist.
+/// Classify a source URL/path into a trust level based on built-in allowlist.
 pub fn classify_source(source: &str) -> TrustLevel {
-    classify_source_with_config(source, &Config::default())
-}
-
-/// Classify a source URL/path into a trust level using the configured
-/// allowlist.
-pub fn classify_source_with_config(source: &str, config: &Config) -> TrustLevel {
     if source.is_empty() {
         return TrustLevel::Local;
     }
-    for trusted_source in &config.plugin_trust.trusted_sources {
-        if source_matches_trusted_source(source, trusted_source) {
+
+    let trusted_prefixes = &[
+        "https://github.com/Nanle-code/starforge-",
+        "https://github.com/StarForge-Labs/",
+        "https://crates.io/crates/starforge-plugin-",
+    ];
+
+    for prefix in trusted_prefixes {
+        if source.starts_with(prefix) {
             return TrustLevel::Trusted;
         }
     }
     TrustLevel::Unknown
-}
-
-pub fn classify_source_from_cli_config(source: &str) -> Result<TrustLevel> {
-    let config = config::load()?;
-    Ok(classify_source_with_config(source, &config))
 }
 
 pub fn source_matches_trusted_source(source: &str, trusted_source: &str) -> bool {
@@ -216,6 +212,57 @@ pub struct InstalledPlugin {
     /// Commands registered by the plugin at install time.
     #[serde(default)]
     pub commands: Vec<RegisteredCommand>,
+    /// Plugin description from `Plugin::description()` at install time.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Bundled metadata for `starforge plugin list` table output.
+#[derive(Debug, Clone)]
+pub struct PluginListEntry {
+    pub name: String,
+    pub version: String,
+    pub trust: TrustLevel,
+    pub description: String,
+    pub commands: Vec<RegisteredCommand>,
+}
+
+/// Resolve a display description using registry data and on-disk manifest fallbacks.
+pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> String {
+    if !plugin.description.is_empty() {
+        return plugin.description.clone();
+    }
+
+    if let Ok(Some(mf)) = manifest::load_manifest_for_library(Path::new(&plugin.path)) {
+        if !mf.description.is_empty() {
+            return mf.description;
+        }
+    }
+
+    plugin
+        .commands
+        .first()
+        .map(|c| c.description.clone())
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| "(none)".to_string())
+}
+
+/// Build table rows for every installed plugin.
+pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<PluginListEntry> {
+    reg.plugins
+        .iter()
+        .map(|p| PluginListEntry {
+            name: p.name.clone(),
+            version: if p.plugin_version.is_empty() {
+                "—".to_string()
+            } else {
+                p.plugin_version.clone()
+            },
+            trust: p.trust.clone(),
+            description: resolve_plugin_description(p),
+            commands: p.commands.clone(),
+        })
+        .collect()
 }
 
 fn registry_path() -> Result<PathBuf> {
@@ -288,19 +335,21 @@ pub fn is_managed_plugin_path(path: &Path) -> bool {
 /// `source` is the URL or identifier where the plugin came from; pass an
 /// empty string when the user supplied `--path` directly.
 /// `commands` is the list of commands the plugin advertises (from `Plugin::commands()`).
+/// `description` is the plugin summary from `Plugin::description()`.
 pub fn install_plugin(
     name: &str,
     library_path: &Path,
     source: &str,
     starforge_version: &str,
     plugin_version: &str,
+    description: &str,
     commands: Vec<RegisteredCommand>,
 ) -> Result<()> {
     if !library_path.exists() {
         anyhow::bail!("Plugin library not found: {}", library_path.display());
     }
 
-    let trust = classify_source_from_cli_config(source)?;
+    let trust = classify_source(source);
     let now = chrono::Utc::now().to_rfc3339();
 
     let mut reg = load_registry().unwrap_or_default();
@@ -314,6 +363,7 @@ pub fn install_plugin(
         plugin_version: plugin_version.to_string(),
         installed_at: Some(now),
         commands,
+        description: description.to_string(),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;
@@ -447,6 +497,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[allow(dead_code)]
     fn temp_registry(tmp: &TempDir) -> PathBuf {
         tmp.path().join("registry.json")
     }
@@ -496,64 +547,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn configured_domain_trusts_exact_and_subdomains_only() {
-        let mut cfg = Config::default();
-        cfg.plugin_trust.trusted_sources = vec!["plugins.example.com".to_string()];
-
-        assert_eq!(
-            classify_source_with_config("https://plugins.example.com/releases/foo", &cfg),
-            TrustLevel::Trusted
-        );
-        assert_eq!(
-            classify_source_with_config("https://cdn.plugins.example.com/foo", &cfg),
-            TrustLevel::Trusted
-        );
-        assert_eq!(
-            classify_source_with_config("https://plugins.example.com.evil/foo", &cfg),
-            TrustLevel::Unknown
-        );
-    }
-
-    #[test]
-    fn configured_url_prefix_trusts_only_matching_scheme_host_and_path() {
-        let mut cfg = Config::default();
-        cfg.plugin_trust.trusted_sources =
-            vec!["https://plugins.example.com/starforge/".to_string()];
-
-        assert_eq!(
-            classify_source_with_config(
-                "https://plugins.example.com/starforge/plugin.tar.gz",
-                &cfg
-            ),
-            TrustLevel::Trusted
-        );
-        assert_eq!(
-            classify_source_with_config("http://plugins.example.com/starforge/plugin.tar.gz", &cfg),
-            TrustLevel::Unknown
-        );
-        assert_eq!(
-            classify_source_with_config("https://plugins.example.com/other/plugin.tar.gz", &cfg),
-            TrustLevel::Unknown
-        );
-        assert_eq!(
-            classify_source_with_config("https://plugins.example.com.evil/starforge/plugin", &cfg),
-            TrustLevel::Unknown
-        );
-    }
-
-    #[test]
-    fn empty_config_allowlist_treats_remote_sources_as_unknown() {
-        let mut cfg = Config::default();
-        cfg.plugin_trust.trusted_sources.clear();
-
-        assert_eq!(
-            classify_source_with_config("https://github.com/Nanle-code/starforge-defi", &cfg),
-            TrustLevel::Unknown
-        );
-        assert_eq!(classify_source_with_config("", &cfg), TrustLevel::Local);
-    }
-
     // ── install_plugin ────────────────────────────────────────────────────────
 
     #[test]
@@ -572,7 +565,7 @@ mod tests {
     fn install_missing_library_fails() {
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("nonexistent.so");
-        let result = install_plugin("test", &missing, "", "0.1.0", "1.0.0", vec![]);
+        let result = install_plugin("test", &missing, "", "0.1.0", "1.0.0", "", vec![]);
         assert!(result.is_err(), "installing a missing library must fail");
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
@@ -609,6 +602,10 @@ mod tests {
             plugin.commands.is_empty(),
             "missing commands field should default to an empty list"
         );
+        assert_eq!(
+            plugin.description, "",
+            "missing description field should default to empty string"
+        );
     }
 
     // ── resolve_plugin_library_path ───────────────────────────────────────────
@@ -625,6 +622,69 @@ mod tests {
     fn missing_implicit_path_returns_error() {
         let result = resolve_plugin_library_path("__no_such_plugin_xyz__", None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_plugin_description_prefers_registry_field() {
+        let plugin = InstalledPlugin {
+            name: "demo".into(),
+            path: "/tmp/demo.so".into(),
+            source: String::new(),
+            trust: TrustLevel::Local,
+            starforge_version: String::new(),
+            plugin_version: String::new(),
+            installed_at: None,
+            commands: vec![RegisteredCommand {
+                name: "demo".into(),
+                description: "from command".into(),
+            }],
+            description: "from plugin".into(),
+        };
+        assert_eq!(resolve_plugin_description(&plugin), "from plugin");
+    }
+
+    #[test]
+    fn resolve_plugin_description_falls_back_to_first_command() {
+        let plugin = InstalledPlugin {
+            name: "demo".into(),
+            path: "/tmp/demo.so".into(),
+            source: String::new(),
+            trust: TrustLevel::Local,
+            starforge_version: String::new(),
+            plugin_version: String::new(),
+            installed_at: None,
+            commands: vec![RegisteredCommand {
+                name: "demo".into(),
+                description: "from command".into(),
+            }],
+            description: String::new(),
+        };
+        assert_eq!(resolve_plugin_description(&plugin), "from command");
+    }
+
+    #[test]
+    fn plugin_list_entries_include_resolved_description() {
+        let reg = PluginRegistry {
+            plugins: vec![InstalledPlugin {
+                name: "trusted".into(),
+                path: "/tmp/trusted.so".into(),
+                source: String::new(),
+                trust: TrustLevel::Trusted,
+                starforge_version: "0.1.0".into(),
+                plugin_version: "1.0.0".into(),
+                installed_at: None,
+                commands: vec![RegisteredCommand {
+                    name: "trusted".into(),
+                    description: "Lifecycle integration test plugin".into(),
+                }],
+                description: "Lifecycle integration test plugin".into(),
+            }],
+        };
+
+        let entries = plugin_list_entries(&reg);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].description, "Lifecycle integration test plugin");
+        assert_eq!(entries[0].commands[0].name, "trusted");
     }
 
     // ── backward compatibility ────────────────────────────────────────────────

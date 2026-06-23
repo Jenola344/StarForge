@@ -506,7 +506,7 @@ pub fn fetch_template_cached(entry: &TemplateEntry, force_refresh: bool) -> Resu
                 }
             }
         } else {
-            return Ok(dest);
+            Ok(dest)
         }
     } else {
         fetch_template(entry, &dest)?;

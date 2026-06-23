@@ -81,3 +81,70 @@ pub fn verified_badge(verified: bool) -> colored::ColoredString {
         "".normal()
     }
 }
+
+/// Print an aligned table with dimmed headers and bright row values.
+pub fn table(headers: &[&str], rows: &[Vec<String>]) {
+    if headers.is_empty() {
+        return;
+    }
+
+    let ncol = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate().take(ncol) {
+            widths[i] = widths[i].max(cell.len());
+        }
+    }
+
+    let header_line = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
+        .collect::<Vec<_>>()
+        .join("  ");
+    println!("  {}", header_line.dimmed());
+
+    for row in rows {
+        let line = (0..ncol)
+            .map(|i| {
+                let val = row.get(i).map(String::as_str).unwrap_or("");
+                format!("{:<width$}", val, width = widths[i])
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        println!("  {}", line.bright_white());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<usize> {
+        let ncol = headers.len();
+        let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+        for row in rows {
+            for (i, cell) in row.iter().enumerate().take(ncol) {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+        widths
+    }
+
+    #[test]
+    fn table_widths_use_header_and_cell_maxima() {
+        let widths = column_widths(
+            &["Name", "Description"],
+            &[vec![
+                "trusted".into(),
+                "Lifecycle integration test plugin".into(),
+            ]],
+        );
+        assert_eq!(widths[0], "trusted".len());
+        assert_eq!(widths[1], "Lifecycle integration test plugin".len());
+    }
+
+    #[test]
+    fn table_widths_handle_empty_rows() {
+        let widths = column_widths(&["Name", "Version"], &[]);
+        assert_eq!(widths, vec![4, 7]);
+    }
+}

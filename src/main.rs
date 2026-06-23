@@ -1,5 +1,6 @@
 #![allow(
     dead_code,
+    clippy::needless_borrows_for_generic_args,
     clippy::needless_range_loop,
     clippy::redundant_closure,
     clippy::too_many_arguments,
@@ -214,7 +215,7 @@ fn handle_external_plugin(args: Vec<String>) -> anyhow::Result<()> {
     let plugin_name = &args[0];
     let plugin_args = &args[1..];
 
-    let cfg = utils::config::load()?;
+    let cfg = starforge::utils::config::load()?;
     let reg = plugins::registry::load_registry().unwrap_or_default();
     if reg.plugins.is_empty() {
         anyhow::bail!(
@@ -242,8 +243,7 @@ fn handle_external_plugin(args: Vec<String>) -> anyhow::Result<()> {
 
     // Warn about unknown-trust plugins before loading.
     for pl in reg.plugins.iter().filter(|p| {
-        plugins::registry::classify_source_with_config(&p.source, &cfg) == TrustLevel::Unknown
-            && !p.source.is_empty()
+        plugins::registry::classify_source(&p.source) == TrustLevel::Unknown && !p.source.is_empty()
     }) {
         eprintln!(
             "  ⚠  Warning: plugin '{}' is from an untrusted source: {}",

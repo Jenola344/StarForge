@@ -192,7 +192,9 @@ fn plugin_lifecycle_install_list_verify_load_uninstall() {
         .output()
         .expect("run plugin list");
     assert_success(&list, "plugin list");
-    assert!(String::from_utf8_lossy(&list.stdout).contains("trusted"));
+    let list_stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(list_stdout.contains("trusted"));
+    assert!(list_stdout.contains("Lifecycle integration test plugin"));
 
     let verify = starforge(home.path())
         .args(["plugin", "verify", "trusted", "--deep"])
