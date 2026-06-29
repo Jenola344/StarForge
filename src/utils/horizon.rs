@@ -5,11 +5,17 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+fn build_http_client(timeout: Duration) -> Result<Client> {
     Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(timeout)
+        .pool_max_idle_per_host(10)
         .build()
-        .expect("Failed to create HTTP client")
+        .context("Failed to create Horizon HTTP client")
+}
+
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    build_http_client(Duration::from_secs(30))
+        .expect("Failed to create shared Horizon HTTP client")
 });
 
 pub fn network_config(network: &str) -> Result<config::NetworkConfig> {
