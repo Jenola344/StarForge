@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod cost_estimation;
 pub mod backup;
 pub mod benchmarking;
 pub mod bindings;
