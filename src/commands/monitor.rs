@@ -157,7 +157,7 @@ async fn monitor_contract(
     let mut printed_any = false;
 
     while running.load(Ordering::SeqCst) {
-        match stream.next_batch() {
+        match stream.next_batch().await {
             Ok(batch) => {
                 for event in batch {
                     let as_text = event.value.to_string();
@@ -184,7 +184,7 @@ async fn monitor_contract(
                     }
                     break;
                 }
-                stream.sleep();
+                stream.sleep().await;
             }
             Err(err) => {
                 if !follow && !printed_any {
@@ -194,7 +194,7 @@ async fn monitor_contract(
                     "Event stream error: {}. Reconnecting with backoff…",
                     err
                 ));
-                stream.sleep_backoff();
+                stream.sleep_backoff().await;
             }
         }
     }
@@ -287,7 +287,7 @@ async fn monitor_wallet(
             }
         }
 
-        std::thread::sleep(std::time::Duration::from_secs(interval.max(1)));
+        tokio::time::sleep(std::time::Duration::from_secs(interval.max(1))).await;
     }
 
     Ok(())

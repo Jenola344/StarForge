@@ -2,12 +2,27 @@ use crate::utils::config::{self, WalletEntry};
 use crate::utils::wallet_signer::{self, SigningRequest};
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use once_cell::sync::Lazy;
+use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use stellar_strkey::{ed25519, Contract};
+use std::time::Duration;
 use stellar_xdr::curr::{
     AccountId, ContractDataDurability, ContractExecutable, Hash, LedgerEntryData, LedgerKey,
     LedgerKeyContractData, PublicKey, ScAddress, ScMap, ScString, ScSymbol, ScVal, Uint256,
 };
+
+fn build_http_client(timeout: Duration) -> Result<Client> {
+    Client::builder()
+        .timeout(timeout)
+        .pool_max_idle_per_host(10)
+        .build()
+        .context("Failed to create Soroban HTTP client")
+}
+
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    build_http_client(Duration::from_secs(30)).expect("Failed to create shared Soroban HTTP client")
+});
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SimulationResult {
@@ -326,15 +341,7 @@ pub async fn check_soroban_rpc_url(url: &str) -> bool {
         params: serde_json::json!({}),
     };
 
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    match client.post(url).json(&request).send().await {
+    match HTTP_CLIENT.post(url).json(&request).send().await {
         Ok(response) => {
             if response.status() != 200 {
                 return false;
@@ -355,12 +362,7 @@ async fn rpc_request_with_url<T>(rpc_url: &str, request: SorobanRpcRequest) -> R
 where
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .with_context(|| format!("Failed to create HTTP client for {}", rpc_url))?;
-
-    let response: SorobanRpcResponse<T> = client
+    let response: SorobanRpcResponse<T> = HTTP_CLIENT
         .post(rpc_url)
         .json(&request)
         .send()
