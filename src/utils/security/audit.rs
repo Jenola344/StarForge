@@ -400,9 +400,10 @@ fn mythril_remediation(title: &str) -> String {
 }
 
 fn run_builtin_analysis(path: &Path) -> Result<Vec<VulnerabilityFinding>> {
-    let result = super::checklist::run_checklist(path)?;
     let mut findings = Vec::new();
 
+    // File-level checklist heuristics.
+    let result = super::checklist::run_checklist(path)?;
     for item in result.items {
         if !item.passed {
             findings.push(VulnerabilityFinding {
@@ -416,7 +417,50 @@ fn run_builtin_analysis(path: &Path) -> Result<Vec<VulnerabilityFinding>> {
             });
         }
     }
+
+    // Line-level static analysis against the built-in pattern library. This is
+    // what gives the offline scanner real coverage of reentrancy, unchecked
+    // arithmetic, unsafe unwraps and missing authorization without needing
+    // Slither or Mythril.
+    findings.extend(run_pattern_analysis(path)?);
+
     Ok(findings)
+}
+
+fn run_pattern_analysis(path: &Path) -> Result<Vec<VulnerabilityFinding>> {
+    use super::hardening::{apply_hardening, HardeningOptions};
+
+    let hardening = apply_hardening(
+        path,
+        &HardeningOptions {
+            apply_fixes: false,
+            dry_run: true,
+            pattern_ids: None,
+        },
+    )?;
+
+    let file = hardening.file.clone();
+    let findings = hardening
+        .findings
+        .into_iter()
+        .map(|f| VulnerabilityFinding {
+            id: format!("SF-PATTERN-{}", f.pattern_id.to_uppercase()),
+            title: f.pattern_name,
+            severity: f.severity,
+            description: f.message,
+            location: Some(format!("{}:{}", file, f.line)),
+            remediation: pattern_remediation(&f.pattern_id),
+            tool: "starforge-builtin".to_string(),
+        })
+        .collect();
+
+    Ok(findings)
+}
+
+fn pattern_remediation(pattern_id: &str) -> String {
+    super::patterns::SecurityPatternLibrary::by_id(pattern_id)
+        .and_then(|p| p.fix.map(|fix| fix.description))
+        .unwrap_or_else(|| format!("Review and remediate the '{}' pattern.", pattern_id))
 }
 
 fn builtin_remediation(id: &str) -> String {
@@ -741,5 +785,54 @@ mod tests {
             generate_github_actions_workflow(Path::new("contracts/token/src/lib.rs"), 85.0);
         assert!(workflow.contains("security audit contracts/token/src/lib.rs"));
         assert!(workflow.contains("--min-score 85.0"));
+    }
+
+    fn write_temp_contract(src: &str) -> std::path::PathBuf {
+        use std::io::Write;
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("sf_audit_test_{}_{}.rs", std::process::id(), unique));
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(src.as_bytes()).unwrap();
+        path
+    }
+
+    #[test]
+    fn builtin_analysis_detects_line_patterns_without_external_tools() {
+        let src = "pub fn withdraw(amount: i128) {\n\
+                   \x20   let total = balance + amount;\n\
+                   \x20   client.invoke_contract(&addr); storage.set(&key, &total);\n\
+                   \x20   let v = data.unwrap();\n\
+                   }\n";
+        let path = write_temp_contract(src);
+        let findings = run_builtin_analysis(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert!(
+            findings.iter().any(|f| f.id == "SF-PATTERN-REENTRANCY-RISK"),
+            "expected reentrancy to be detected offline, got: {:?}",
+            findings.iter().map(|f| f.id.clone()).collect::<Vec<_>>()
+        );
+
+        // Every line-level pattern finding must carry a line-qualified location,
+        // a non-empty remediation, and be attributed to the built-in scanner.
+        for f in findings.iter().filter(|f| f.id.starts_with("SF-PATTERN-")) {
+            assert!(
+                f.location.as_deref().unwrap_or_default().contains(':'),
+                "missing line in location for {}",
+                f.id
+            );
+            assert!(!f.remediation.is_empty(), "missing remediation for {}", f.id);
+            assert_eq!(f.tool, "starforge-builtin");
+        }
+    }
+
+    #[test]
+    fn pattern_remediation_falls_back_for_unknown_pattern() {
+        let remediation = pattern_remediation("does-not-exist");
+        assert!(remediation.contains("does-not-exist"));
     }
 }
