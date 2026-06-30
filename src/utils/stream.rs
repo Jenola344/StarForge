@@ -1,3 +1,4 @@
+use crate::utils::http_client;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use once_cell::sync::Lazy;
@@ -114,13 +115,14 @@ impl SorobanEventStream {
             }
         });
 
-        let response: SorobanGetEventsResponse = HTTP_CLIENT
+        let client = http_client::get_client();
+        let response: SorobanGetEventsResponse = client
             .post(&self.rpc_url)
             .json(&request)
             .send()
             .await
             .with_context(|| format!("Soroban RPC request to {} failed", self.rpc_url))?
-            .json::<SorobanGetEventsResponse>()
+            .json()
             .await
             .with_context(|| "Failed to decode Soroban getEvents response")?;
 

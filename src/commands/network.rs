@@ -1,4 +1,4 @@
-use crate::utils::{config, print as p};
+use crate::utils::{config, http_client, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use std::time::Duration;
@@ -195,14 +195,10 @@ async fn test_network(network_name: Option<String>) -> Result<()> {
         .build()?;
 
     // Test Horizon endpoint
-    let health_url = format!("{}/health", net_cfg.horizon_url.trim_end_matches('/'));
-    match client.get(&health_url).send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                p::success("✓ Horizon endpoint is reachable");
-            } else {
-                p::warn(&format!("✗ Horizon endpoint failed: HTTP {}", response.status()));
-            }
+    let client = http_client::get_client();
+    match client.get(&format!("{}/health", net_cfg.horizon_url)).send().await {
+        Ok(_) => {
+            p::success("✓ Horizon endpoint is reachable");
         }
         Err(e) => {
             p::warn(&format!("✗ Horizon endpoint failed: {}", e));
@@ -220,12 +216,8 @@ async fn test_network(network_name: Option<String>) -> Result<()> {
         });
 
         match client.post(soroban_url).json(&req).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    p::success("✓ Soroban RPC endpoint is reachable");
-                } else {
-                    p::warn(&format!("✗ Soroban RPC endpoint failed: HTTP {}", response.status()));
-                }
+            Ok(_) => {
+                p::success("✓ Soroban RPC endpoint is reachable");
             }
             Err(e) => {
                 p::warn(&format!("✗ Soroban RPC endpoint failed: {}", e));

@@ -163,7 +163,7 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             version,
             cli_version_min,
             cli_version_max,
-        ),
+        ).await,
         TemplateCommands::Publish {
             path,
             name,
@@ -190,31 +190,30 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             repository,
             homepage,
             documentation,
-        ),
-        TemplateCommands::List => list(),
+        ).await,
+        TemplateCommands::List => list().await,
         TemplateCommands::Search {
             query,
             tags,
             verified,
             min_quality,
             refresh,
-        } => search(query, tags, verified, min_quality, refresh),
-        TemplateCommands::Show { name } => show(name),
-        TemplateCommands::Remove { name, purge } => remove(name, purge),
+        } => search(query, tags, verified, min_quality, refresh).await,
+        TemplateCommands::Show { name } => show(name).await,
+        TemplateCommands::Remove { name, purge } => remove(name, purge).await,
         TemplateCommands::Init => init(),
-        TemplateCommands::Info { name } => info(name),
+        TemplateCommands::Info { name } => info(name).await,
         TemplateCommands::Install {
             source,
             name,
             version,
             force,
-        } => install(source, name, version, force),
-        TemplateCommands::Update { name, all } => update(name, all),
-        TemplateCommands::Docs { name, output } => docs(name, output),
+        } => install(source, name, version, force).await,
+        TemplateCommands::Update { name, all } => update(name, all).await,
     }
 }
 
-fn import(
+async fn import(
     path: PathBuf,
     name: Option<String>,
     description: Option<String>,
@@ -237,13 +236,13 @@ fn import(
         None,
         None,
         None,
-    )?;
+    ).await?;
     p::header("Template Import");
     p::info("Template package imported into the local registry.");
     Ok(())
 }
 
-fn publish(
+async fn publish(
     path: PathBuf,
     name: Option<String>,
     description: Option<String>,
@@ -296,8 +295,8 @@ fn publish(
         repository,
         homepage,
         documentation,
-    )?;
-    let template = templates::get_template(&name)?;
+    ).await?;
+    let template = templates::get_template(&name).await?;
 
     p::header("Template Publish");
     p::success("Template registered successfully");
@@ -320,10 +319,10 @@ fn publish(
     Ok(())
 }
 
-fn list() -> Result<()> {
+async fn list() -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let registry = templates::load_registry()?;
+    let registry = templates::load_registry().await?;
     p::header("Template Registry");
     if registry.templates.is_empty() {
         p::info("No templates found. Publish one with: starforge template publish <path>");
@@ -364,7 +363,7 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn search(
+async fn search(
     query: String,
     tags: Option<String>,
     verified: bool,
@@ -388,11 +387,11 @@ fn search(
     // Load registry, optionally forcing a refresh of the remote copy.
     let results = if refresh {
         std::env::set_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH", "1");
-        let res = templates::search_templates_ranked(&query, &filters);
+        let res = templates::search_templates_ranked(&query, &filters).await;
         std::env::remove_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH");
         res?
     } else {
-        templates::search_templates_ranked(&query, &filters)?
+        templates::search_templates_ranked(&query, &filters).await?
     };
 
     let heading = if query.trim().is_empty() {
@@ -469,10 +468,10 @@ fn search(
     Ok(())
 }
 
-fn show(name: String) -> Result<()> {
+async fn show(name: String) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let template = templates::get_template(&name)?;
+    let template = templates::get_template(&name).await?;
     p::header(&format!("Template: {}", template.name));
     p::kv("Version", &template.version);
     p::kv("Description", &template.description);
@@ -552,8 +551,8 @@ fn print_quality_signals(template: &templates::TemplateEntry) {
     }
 }
 
-fn remove(name: String, purge: bool) -> Result<()> {
-    templates::remove_template(&name, purge)?;
+async fn remove(name: String, purge: bool) -> Result<()> {
+    templates::remove_template(&name, purge).await?;
 
     if purge {
         p::success(&format!("Template '{}' and all local assets removed", name));
@@ -571,10 +570,10 @@ fn init() -> Result<()> {
     Ok(())
 }
 
-fn info(name: String) -> Result<()> {
+async fn info(name: String) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let template = templates::get_template(&name)?;
+    let template = templates::get_template(&name).await?;
 
     p::header(&format!("Template Info: {}", template.name));
     p::separator();
@@ -671,7 +670,7 @@ fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn install(
+async fn install(
     source: String,
     name: Option<String>,
     version: Option<String>,
@@ -688,7 +687,7 @@ fn install(
     println!();
 
     p::step(1, 2, "Resolving and fetching template...");
-    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force)?;
+    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
 
     p::step(2, 2, "Registering in local registry...");
     println!();
@@ -706,11 +705,11 @@ fn install(
     Ok(())
 }
 
-fn update(name: Option<String>, all: bool) -> Result<()> {
+async fn update(name: Option<String>, all: bool) -> Result<()> {
     if all {
         p::header("Template Update — All");
         p::step(1, 1, "Updating all git-sourced templates...");
-        let results = templates::update_all_installed_templates()?;
+        let results = templates::update_all_installed_templates().await?;
 
         if results.is_empty() {
             p::info("No git-sourced templates are installed.");
@@ -737,7 +736,7 @@ fn update(name: Option<String>, all: bool) -> Result<()> {
 
     p::header(&format!("Template Update: {}", name));
     p::step(1, 1, "Re-fetching from source...");
-    templates::update_installed_template(&name)?;
+    templates::update_installed_template(&name).await?;
     println!();
     p::success(&format!("Template '{}' updated", name));
     Ok(())

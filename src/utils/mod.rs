@@ -24,6 +24,7 @@ pub mod governance;
 pub mod hardware_wallet;
 pub mod wallet_signer;
 pub mod horizon;
+pub mod http_client;
 pub mod logging;
 pub mod mnemonic;
 pub mod mock_soroban;
