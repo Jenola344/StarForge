@@ -1,20 +1,4 @@
-//! `starforge docs` — Contract Documentation Generator
-//!
-//! Subcommands:
-//! - `generate`  Generate docs from a contract (by ID / metadata)
-//! - `extract`   Extract doc comments directly from a Rust source file/dir
-//! - `show`      Display stored docs in the terminal
-//! - `list`      List all documented contracts
-//! - `search`    Full-text search across all docs
-//! - `versions`  Show version history for a contract
-//! - `export`    Render stored docs as Markdown (stdout)
-//! - `html`      Generate/update the HTML documentation site
-//! - `api-ref`   Generate a machine-readable API reference (JSON + Markdown)
-//! - `publish`   Run the full build + publish pipeline
-
-use crate::utils::{
-    doc_api_ref, doc_extractor, doc_html, doc_publisher, doc_templates, docs, print as p,
-};
+use crate::utils::{doc_generator, docs, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
@@ -84,63 +68,64 @@ pub enum DocsCommands {
         #[arg(long)]
         version: Option<String>,
     },
-
-    /// Generate (or update) the HTML documentation site
-    Html {
-        /// Contract ID to render
-        contract: String,
-        /// Directory to write HTML files into
-        #[arg(long, default_value = "docs-site")]
-        output: PathBuf,
-        /// Optional custom template directory
+    /// Extract doc comments from a Soroban contract source file
+    Extract {
+        /// Path to the contract source file (.rs) or directory
+        source: String,
+        /// Output file path for extracted JSON (stdout if omitted)
         #[arg(long)]
-        templates: Option<PathBuf>,
+        output: Option<String>,
+        /// Output format: json or markdown (default: json)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
-
-    /// Generate a machine-readable API reference (JSON + Markdown)
-    #[command(name = "api-ref")]
+    /// Generate HTML documentation site from a contract source file
+    Html {
+        /// Contract ID (used for output directory naming)
+        contract: String,
+        /// Contract display name
+        #[arg(long)]
+        name: String,
+        /// Path to the contract source file (.rs)
+        #[arg(long)]
+        source: String,
+        /// Output directory for the generated HTML site
+        #[arg(long)]
+        output_dir: Option<String>,
+        /// Custom template directory (overrides built-in templates)
+        #[arg(long)]
+        template_dir: Option<String>,
+    },
+    /// Generate an API reference (JSON + Markdown) from a contract source file
     ApiRef {
         /// Contract ID
         contract: String,
-        /// Directory to write reference files into
-        #[arg(long, default_value = "docs-site")]
-        output: PathBuf,
-        /// Only emit JSON (skip Markdown)
+        /// Contract display name
         #[arg(long)]
-        json_only: bool,
-        /// Only emit Markdown (skip JSON)
+        name: String,
+        /// Path to the contract source file (.rs)
         #[arg(long)]
-        md_only: bool,
+        source: String,
+        /// Documentation version
+        #[arg(long, default_value = "1.0.0")]
+        version: String,
+        /// Output directory (defaults to ~/.starforge/docs/<contract>/)
+        #[arg(long)]
+        output_dir: Option<String>,
     },
-
-    /// Run the full build + publish pipeline for a contract
+    /// Publish generated HTML documentation to a destination
     Publish {
         /// Contract ID
         contract: String,
-        /// Intermediate build directory
-        #[arg(long, default_value = "docs-build")]
-        build_dir: PathBuf,
-        /// Publish target: local path, github-pages, or http URL
-        #[arg(long, default_value = "local")]
-        target: String,
-        /// Destination for local publish
+        /// Source directory containing the generated HTML site
         #[arg(long)]
-        dest: Option<PathBuf>,
-        /// Local git repo path for GitHub Pages publish
+        source_dir: Option<String>,
+        /// Destination path or remote rsync target (e.g. user@host:/var/www/docs)
         #[arg(long)]
-        repo: Option<PathBuf>,
-        /// HTTP endpoint for custom HTTP publish
+        dest: Option<String>,
+        /// Also write a deploy.sh script for manual deployment
         #[arg(long)]
-        endpoint: Option<String>,
-        /// Bearer token for HTTP publish
-        #[arg(long)]
-        token: Option<String>,
-        /// Include JSON API reference in the published output
-        #[arg(long)]
-        api_json: bool,
-        /// Include Markdown API reference in the published output
-        #[arg(long)]
-        api_md: bool,
+        generate_script: bool,
     },
 }
 
@@ -165,33 +150,31 @@ pub async fn handle(cmd: DocsCommands) -> Result<()> {
         DocsCommands::Search { query } => search(query),
         DocsCommands::Versions { contract } => versions(contract),
         DocsCommands::Export { contract, version } => export(contract, version),
-
+        DocsCommands::Extract {
+            source,
+            output,
+            format,
+        } => extract(source, output, format),
         DocsCommands::Html {
             contract,
-            output,
-            templates,
-        } => html(contract, output, templates),
-
+            name,
+            source,
+            output_dir,
+            template_dir,
+        } => generate_html(contract, name, source, output_dir, template_dir),
         DocsCommands::ApiRef {
             contract,
-            output,
-            json_only,
-            md_only,
-        } => api_ref(contract, output, json_only, md_only),
-
+            name,
+            source,
+            version,
+            output_dir,
+        } => generate_api_ref(contract, name, source, version, output_dir),
         DocsCommands::Publish {
             contract,
-            build_dir,
-            target,
+            source_dir,
             dest,
-            repo,
-            endpoint,
-            token,
-            api_json,
-            api_md,
-        } => publish(
-            contract, build_dir, target, dest, repo, endpoint, token, api_json, api_md,
-        ),
+            generate_script,
+        } => publish(contract, source_dir, dest, generate_script),
     }
 }
 
@@ -732,5 +715,238 @@ fn publish(
     p::kv("Published to", &result.published_to);
     p::kv("Files written", &result.files_written.to_string());
     p::info(&result.message);
+    Ok(())
+}
+
+fn extract(source: String, output: Option<String>, format: String) -> Result<()> {
+    p::header("Documentation — Extract Doc Comments");
+
+    let source_path = PathBuf::from(&source);
+    p::step(1, 3, &format!("Reading source: {}", source));
+
+    let extracted = if source_path.is_dir() {
+        // Merge docs from all .rs files in the directory
+        let mut merged = doc_generator::ExtractedDocs {
+            module_doc: String::new(),
+            functions: Vec::new(),
+            structs: Vec::new(),
+            enums: Vec::new(),
+            constants: Vec::new(),
+            source_path: source.clone(),
+        };
+        for entry in std::fs::read_dir(&source_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                let docs = doc_generator::DocCommentExtractor::extract_from_file(&path)?;
+                merged.functions.extend(docs.functions);
+                merged.structs.extend(docs.structs);
+                merged.enums.extend(docs.enums);
+                merged.constants.extend(docs.constants);
+                if merged.module_doc.is_empty() {
+                    merged.module_doc = docs.module_doc;
+                }
+            }
+        }
+        merged
+    } else {
+        doc_generator::DocCommentExtractor::extract_from_file(&source_path)?
+    };
+
+    p::step(2, 3, "Formatting output...");
+
+    let content = match format.as_str() {
+        "markdown" | "md" => {
+            let api = doc_generator::ApiReferenceGenerator::from_extracted(
+                &extracted,
+                &source,
+                &source,
+                "extracted",
+            );
+            doc_generator::ApiReferenceGenerator::render_markdown(&api)
+        }
+        _ => serde_json::to_string_pretty(&extracted)?,
+    };
+
+    p::step(3, 3, "Writing output...");
+
+    if let Some(out_path) = output {
+        std::fs::write(&out_path, &content)?;
+        p::success(&format!("Extracted docs written to '{}'", out_path));
+    } else {
+        println!("{}", content);
+    }
+
+    println!();
+    p::kv("Functions found", &extracted.functions.len().to_string());
+    p::kv("Structs found", &extracted.structs.len().to_string());
+    p::kv("Enums found", &extracted.enums.len().to_string());
+    p::kv(
+        "Public functions",
+        &extracted
+            .functions
+            .iter()
+            .filter(|f| f.visibility == doc_generator::Visibility::Public)
+            .count()
+            .to_string(),
+    );
+
+    Ok(())
+}
+
+fn generate_html(
+    contract: String,
+    name: String,
+    source: String,
+    output_dir: Option<String>,
+    template_dir: Option<String>,
+) -> Result<()> {
+    p::header("Documentation — Generate HTML Site");
+
+    p::step(1, 4, &format!("Extracting doc comments from '{}'", source));
+    let source_path = PathBuf::from(&source);
+    let extracted = doc_generator::DocCommentExtractor::extract_from_file(&source_path)?;
+
+    let out_dir = output_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".starforge")
+                .join("docs")
+                .join("html")
+                .join(&contract)
+        });
+
+    p::step(2, 4, "Initialising template engine...");
+    let mut generator = doc_generator::HtmlDocGenerator::new();
+    if let Some(tmpl_dir) = template_dir {
+        generator = generator.with_template_dir(&PathBuf::from(tmpl_dir))?;
+    }
+
+    p::step(3, 4, &format!("Generating HTML site in '{}'", out_dir.display()));
+    generator.generate_site(&extracted, &name, &contract, &out_dir)?;
+
+    p::step(4, 4, "Writing publish manifest...");
+    doc_generator::DocPublisher::write_manifest(&out_dir, &contract, "latest")?;
+
+    println!();
+    p::success(&format!("HTML documentation generated for '{}'", name));
+    p::kv("Contract", &contract);
+    p::kv("Output", &out_dir.display().to_string());
+    p::kv("Functions documented", &extracted.functions.len().to_string());
+    p::info(&format!(
+        "Open '{}' to view the documentation.",
+        out_dir.join("index.html").display()
+    ));
+
+    Ok(())
+}
+
+fn generate_api_ref(
+    contract: String,
+    name: String,
+    source: String,
+    version: String,
+    output_dir: Option<String>,
+) -> Result<()> {
+    p::header("Documentation — Generate API Reference");
+
+    p::step(1, 3, &format!("Extracting from '{}'", source));
+    let source_path = PathBuf::from(&source);
+    let extracted = doc_generator::DocCommentExtractor::extract_from_file(&source_path)?;
+
+    p::step(2, 3, "Building API reference...");
+    let api_ref = doc_generator::ApiReferenceGenerator::from_extracted(
+        &extracted,
+        &contract,
+        &name,
+        &version,
+    );
+
+    let out_dir = output_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".starforge")
+                .join("docs")
+                .join(&contract)
+        });
+
+    std::fs::create_dir_all(&out_dir)?;
+
+    p::step(3, 3, "Writing JSON and Markdown...");
+    let json_path = out_dir.join("api-reference.json");
+    let md_path = out_dir.join("api-reference.md");
+
+    doc_generator::ApiReferenceGenerator::save_json(&api_ref, &json_path)?;
+    std::fs::write(&md_path, doc_generator::ApiReferenceGenerator::render_markdown(&api_ref))?;
+
+    println!();
+    p::success(&format!("API reference generated for '{}' v{}", name, version));
+    p::kv("JSON", &json_path.display().to_string());
+    p::kv("Markdown", &md_path.display().to_string());
+    p::kv("Functions", &api_ref.functions.len().to_string());
+    p::kv("Events", &api_ref.events.len().to_string());
+
+    Ok(())
+}
+
+fn publish(
+    contract: String,
+    source_dir: Option<String>,
+    dest: Option<String>,
+    generate_script: bool,
+) -> Result<()> {
+    p::header("Documentation — Publish");
+
+    let src = source_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".starforge")
+                .join("docs")
+                .join("html")
+                .join(&contract)
+        });
+
+    if !src.exists() {
+        p::error(&format!(
+            "Source directory '{}' does not exist. Run `starforge docs html` first.",
+            src.display()
+        ));
+        return Ok(());
+    }
+
+    p::step(1, 3, &format!("Source: {}", src.display()));
+
+    if let Some(ref destination) = dest {
+        p::step(2, 3, &format!("Copying to '{}'", destination));
+        let dest_path = PathBuf::from(destination);
+        doc_generator::DocPublisher::publish_to_dir(&src, &dest_path)?;
+        p::success(&format!("Documentation published to '{}'", destination));
+    } else {
+        p::step(2, 3, "No --dest specified; skipping file copy");
+    }
+
+    p::step(3, 3, "Finalising...");
+    doc_generator::DocPublisher::write_manifest(&src, &contract, "latest")?;
+
+    if generate_script {
+        let endpoint = dest.as_deref().unwrap_or("user@host:/var/www/docs");
+        let script = doc_generator::DocPublisher::generate_deploy_script(&src, endpoint)?;
+        p::kv("Deploy script", &script.display().to_string());
+    }
+
+    println!();
+    p::kv("Contract", &contract);
+    p::kv("Source", &src.display().to_string());
+    if let Some(d) = &dest {
+        p::kv("Destination", d);
+    }
+    p::info("Manifest written to manifest.json in the source directory.");
+
     Ok(())
 }
