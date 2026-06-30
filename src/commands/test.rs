@@ -1,6 +1,4 @@
-use crate::utils::{
-    config, contract_testing, print as p, test_automation, test_coverage, test_runner,
-};
+use crate::utils::{config, print as p, rollback_testing, test_automation, test_runner};
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
@@ -18,6 +16,22 @@ pub struct TestArgs {
     /// Path to contract source for generation/coverage
     #[arg(long)]
     pub source: Option<PathBuf>,
+
+    /// Run the rollback safety test harness for a previous/upgraded contract pair
+    #[arg(long, default_value = "false")]
+    pub rollback: bool,
+
+    /// Path to the previous compiled wasm used as the rollback target
+    #[arg(long = "previous-wasm")]
+    pub previous_wasm: Option<PathBuf>,
+
+    /// Rollback scenario JSON file. Can be passed multiple times.
+    #[arg(long = "rollback-scenario")]
+    pub rollback_scenario: Vec<PathBuf>,
+
+    /// Maximum allowed rollback scenario duration in milliseconds
+    #[arg(long = "rollback-performance-budget-ms", default_value = "1000")]
+    pub rollback_performance_budget_ms: u64,
 
     /// Collect coverage analysis (requires --source)
     #[arg(long, default_value = "false")]
@@ -153,6 +167,68 @@ pub async fn handle(args: TestArgs) -> Result<()> {
     );
     if args.parallel {
         p::kv("Workers", &args.workers.to_string());
+    }
+    if args.rollback {
+        p::kv("Rollback harness", "enabled");
+        p::kv(
+            "Rollback scenarios",
+            if args.rollback_scenario.is_empty() {
+                "default"
+            } else {
+                "custom"
+            },
+        );
+    }
+
+    if args.rollback {
+        let previous_wasm = args.previous_wasm.clone().ok_or_else(|| {
+            anyhow::anyhow!("--rollback requires --previous-wasm <path-to-previous.wasm>")
+        })?;
+        config::validate_file_path(&previous_wasm, Some("wasm"))?;
+        for scenario in &args.rollback_scenario {
+            config::validate_file_path(scenario, Some("json"))?;
+        }
+
+        p::info("Running contract rollback safety harness...");
+        let report = rollback_testing::run_rollback_tests(rollback_testing::RollbackTestOptions {
+            previous_wasm,
+            upgraded_wasm: args.wasm.clone(),
+            scenario_paths: args.rollback_scenario.clone(),
+            performance_budget_ms: args.rollback_performance_budget_ms,
+            report_format: args.report.clone(),
+        })?;
+
+        println!();
+        p::separator();
+        p::kv_accent("Previous SHA256", &report.previous_wasm_hash);
+        p::kv_accent("Upgraded SHA256", &report.upgraded_wasm_hash);
+        p::kv("Rollback scenarios", &report.total_scenarios.to_string());
+        p::kv("Passed", &report.passed.to_string());
+        p::kv("Failed", &report.failed.to_string());
+        p::kv("Duration", &format!("{}ms", report.total_duration_ms));
+        if let Some(path) = &report.report_path {
+            p::kv("Rollback report", &path.display().to_string());
+        }
+
+        for scenario in &report.scenario_results {
+            println!();
+            p::kv(
+                &format!("Scenario {}", scenario.scenario_name),
+                if scenario.passed { "pass" } else { "fail" },
+            );
+            for check in &scenario.checks {
+                let marker = if check.passed { "✓" } else { "✗" };
+                println!("  {} {:?}: {}", marker, check.category, check.message);
+            }
+        }
+        p::separator();
+
+        if report.failed > 0 {
+            anyhow::bail!("Rollback safety checks failed");
+        }
+
+        p::success("Rollback safety checks passed");
+        return Ok(());
     }
 
     if let Some(fixture) = &args.fixture {
