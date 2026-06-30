@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +14,10 @@ pub struct Proposal {
     pub created_at: String,
     pub expires_at: Option<String>,
     pub metadata: ProposalMetadata,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction_xdr: Option<String>,
+    #[serde(default)]
+    pub events: Vec<ProposalEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +34,43 @@ pub struct ProposalMetadata {
     pub transaction_type: Option<String>,
     pub amount: Option<f64>,
     pub recipient: Option<String>,
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProposalEvent {
+    pub event_type: String,
+    pub message: String,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignatureProgress {
+    pub signed: u32,
+    pub required: u32,
+    pub total_signers: u32,
+    pub percent: u32,
+    pub ready: bool,
+    pub pending_signers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignatureValidationReport {
+    pub valid_signatures: u32,
+    pub invalid_signers: Vec<String>,
+    pub duplicate_signers: Vec<String>,
+    pub missing_signers: Vec<String>,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MultisigTemplate {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub threshold: u32,
+    pub signers: Vec<&'static str>,
+    pub transaction_type: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -55,16 +97,39 @@ impl Proposal {
                 transaction_type: None,
                 amount: None,
                 recipient: None,
+                template: None,
             },
+            transaction_xdr: None,
+            events: vec![ProposalEvent {
+                event_type: "created".to_string(),
+                message: "Proposal created".to_string(),
+                at: Utc::now().to_rfc3339(),
+            }],
         }
     }
 
     pub fn add_signature(&mut self, signer: String, signature: String) {
         self.signatures.push(Signature {
-            signer,
+            signer: signer.clone(),
             signature,
             signed_at: Utc::now().to_rfc3339(),
         });
+        self.events.push(ProposalEvent {
+            event_type: "signed".to_string(),
+            message: format!("Signature collected from {}", signer),
+            at: Utc::now().to_rfc3339(),
+        });
+    }
+
+    pub fn add_signature_checked(&mut self, signer: String, signature: String) -> Result<()> {
+        if !self.signers.contains(&signer) {
+            anyhow::bail!("Signer '{}' is not authorized for this proposal", signer);
+        }
+        if self.signatures.iter().any(|sig| sig.signer == signer) {
+            anyhow::bail!("Signer '{}' has already signed this proposal", signer);
+        }
+        self.add_signature(signer, signature);
+        Ok(())
     }
 
     pub fn is_complete(&self) -> bool {
@@ -117,6 +182,8 @@ fn hash_message(message: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
+    hasher.update(signer.as_bytes());
+    hasher.update(b":");
     hasher.update(message.as_bytes());
     Ok(hex::encode(hasher.finalize()))
 }

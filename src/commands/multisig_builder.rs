@@ -1,4 +1,4 @@
-use crate::utils::{multisig_builder as multisig, print as p};
+use crate::utils::{multisig_builder as multisig, notifications, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
@@ -19,25 +19,36 @@ pub enum MultisigCommands {
         /// Minimum signatures required
         #[arg(long)]
         threshold: u32,
-        /// Signers (comma-separated public keys)
+        /// Signers (comma-separated names or public keys)
         #[arg(long)]
         signers: String,
         /// Transaction network
         #[arg(long, default_value = "testnet")]
         network: String,
+        /// Human-readable proposal title
+        #[arg(long)]
+        title: Option<String>,
+        /// Proposal description
+        #[arg(long)]
+        description: Option<String>,
+        /// Transaction envelope/XDR to collect signatures for
+        #[arg(long)]
+        transaction_xdr: Option<String>,
     },
+    /// Interactive multi-sig transaction builder
+    Wizard,
     /// Add a signer to proposal
     AddSigner {
         /// Proposal file path
         proposal: PathBuf,
-        /// Signer public key
+        /// Signer name or public key
         signer: String,
     },
-    /// Sign proposal with wallet
+    /// Sign proposal with wallet/signer name
     Sign {
         /// Proposal file path
         proposal: PathBuf,
-        /// Signer wallet name
+        /// Signer wallet/name
         wallet: String,
     },
     /// View proposal details and signatures
@@ -99,6 +110,9 @@ pub enum MultisigCommands {
         template: String,
         /// Output file path
         output: PathBuf,
+        /// Transaction network
+        #[arg(long, default_value = "testnet")]
+        network: String,
     },
 }
 
@@ -109,7 +123,18 @@ pub async fn handle(cmd: MultisigCommands) -> Result<()> {
             threshold,
             signers,
             network,
-        } => create_proposal(threshold, &signers, &network),
+            title,
+            description,
+            transaction_xdr,
+        } => create_proposal(
+            threshold,
+            &signers,
+            &network,
+            title,
+            description,
+            transaction_xdr,
+        ),
+        MultisigCommands::Wizard => interactive_wizard(),
         MultisigCommands::AddSigner { proposal, signer } => add_signer(&proposal, &signer),
         MultisigCommands::Sign { proposal, wallet } => sign_proposal(&proposal, &wallet),
         MultisigCommands::View { proposal } => view_proposal(&proposal),
@@ -125,7 +150,11 @@ pub async fn handle(cmd: MultisigCommands) -> Result<()> {
             message,
         } => notify_signers(&proposal, &channel, webhook, message),
         MultisigCommands::Templates => list_templates(),
-        MultisigCommands::FromTemplate { template, output } => from_template(&template, &output),
+        MultisigCommands::FromTemplate {
+            template,
+            output,
+            network,
+        } => from_template(&template, &output, &network),
     }
 }
 
@@ -273,24 +302,98 @@ fn create_proposal(threshold: u32, signers: &str, network: &str) -> Result<()> {
         signers.split(',').count()
     ));
 
-    let signer_list: Vec<String> = signers.split(',').map(|s| s.trim().to_string()).collect();
+    save_proposal(Path::new(&filename), &proposal)?;
 
-    if threshold as usize > signer_list.len() {
-        anyhow::bail!("Threshold cannot exceed number of signers");
+    println!();
+    p::success(&format!("Proposal created: {}", filename));
+    p::kv(
+        "Threshold",
+        &format!("{}/{}", threshold, proposal.signers.len()),
+    );
+    p::kv("Network", network);
+    print_progress(&proposal);
+    Ok(())
+}
+
+fn interactive_wizard() -> Result<()> {
+    let theme = ColorfulTheme::default();
+    p::header("Interactive Multi-Sig Builder");
+
+    let templates = multisig::common_templates();
+    let mut choices = vec!["blank custom proposal".to_string()];
+    choices.extend(
+        templates
+            .iter()
+            .map(|template| format!("{} - {}", template.name, template.description)),
+    );
+
+    let selected = Select::with_theme(&theme)
+        .with_prompt("Choose a starting point")
+        .items(&choices)
+        .default(0)
+        .interact()?;
+
+    let network: String = Input::with_theme(&theme)
+        .with_prompt("Network")
+        .default("testnet".to_string())
+        .interact_text()?;
+
+    let mut proposal = if selected == 0 {
+        let threshold: u32 = Input::with_theme(&theme)
+            .with_prompt("Required signatures")
+            .default(2)
+            .interact_text()?;
+        let signers: String = Input::with_theme(&theme)
+            .with_prompt("Signers (comma-separated names or public keys)")
+            .interact_text()?;
+        let signer_list = parse_signers(&signers);
+        validate_threshold(threshold, signer_list.len())?;
+        multisig::Proposal::new(threshold, signer_list, network)
+    } else {
+        multisig::proposal_from_template(templates[selected - 1].name, network)?
+    };
+
+    let title: String = Input::with_theme(&theme)
+        .with_prompt("Title")
+        .default(
+            proposal
+                .metadata
+                .title
+                .clone()
+                .unwrap_or_else(|| "Multi-sig transaction".to_string()),
+        )
+        .interact_text()?;
+    proposal.metadata.title = Some(title);
+
+    let description: String = Input::with_theme(&theme)
+        .with_prompt("Description")
+        .allow_empty(true)
+        .interact_text()?;
+    if !description.trim().is_empty() {
+        proposal.metadata.description = Some(description);
     }
 
-    let proposal = multisig::Proposal::new(threshold, signer_list, network.to_string());
-    let filename = format!("proposal_{}.json", uuid::Uuid::new_v4());
+    let transaction_xdr: String = Input::with_theme(&theme)
+        .with_prompt("Transaction XDR/envelope (optional)")
+        .allow_empty(true)
+        .interact_text()?;
+    if !transaction_xdr.trim().is_empty() {
+        proposal.transaction_xdr = Some(transaction_xdr);
+    }
 
     save_proposal(std::path::Path::new(&filename), &proposal)?;
 
     println!();
-    println!("  Proposal: {}", colored::Colorize::cyan(filename.as_str()));
-    println!("  Threshold: {}/{}", threshold, signers.split(',').count());
-    println!("  Network: {}", network);
-    println!();
+    p::success(&format!("Proposal created: {}", output));
+    print_progress(&proposal);
 
-    p::success(&format!("Proposal created: {}", filename));
+    if Confirm::with_theme(&theme)
+        .with_prompt("Queue signature request notifications now?")
+        .default(false)
+        .interact()?
+    {
+        notify_for_proposal(&proposal, None)?;
+    }
 
     Ok(())
 }
@@ -306,7 +409,7 @@ fn add_signer(proposal_path: &std::path::Path, signer: &str) -> Result<()> {
     save_proposal(proposal_path, &proposal)?;
 
     p::success(&format!("Signer added: {}", signer));
-
+    print_progress(&proposal);
     Ok(())
 }
 
@@ -315,7 +418,7 @@ fn sign_proposal(proposal_path: &std::path::Path, wallet: &str) -> Result<()> {
 
     multisig::validate_for_signing(&proposal, wallet)?;
 
-    p::info(&format!("Signing proposal with wallet '{}'", wallet));
+    p::info(&format!("Signing proposal with '{}'", wallet));
 
     let signature = multisig::generate_signature(&proposal.id, wallet)?;
     if !multisig::validate_signature_format(&signature) {
@@ -336,9 +439,8 @@ fn sign_proposal(proposal_path: &std::path::Path, wallet: &str) -> Result<()> {
         proposal.threshold
     );
     println!();
-
     p::success("Proposal signed");
-
+    print_progress(&proposal);
     Ok(())
 }
 
@@ -355,13 +457,12 @@ fn view_proposal(proposal_path: &std::path::Path) -> Result<()> {
     let proposal = load_proposal(proposal_path)?;
 
     println!();
-    println!("{}", colored::Colorize::cyan("═══ PROPOSAL ═══"));
-    println!("ID:          {}", proposal.id);
-    println!("Network:     {}", proposal.network);
-    println!(
-        "Threshold:   {}/{}",
-        proposal.threshold,
-        proposal.signers.len()
+    p::header("Multi-Sig Proposal");
+    p::kv_accent("ID", &proposal.id);
+    p::kv("Network", &proposal.network);
+    p::kv(
+        "Threshold",
+        &format!("{}/{}", proposal.threshold, proposal.signers.len()),
     );
     println!("Status:      {}", proposal.get_status());
     println!("Created:     {}", proposal.created_at);
@@ -373,15 +474,16 @@ fn view_proposal(proposal_path: &std::path::Path) -> Result<()> {
     }
     println!();
 
-    println!("{}", colored::Colorize::cyan("═══ SIGNERS ═══"));
+    println!();
+    p::info("Signers");
     for (idx, signer) in proposal.signers.iter().enumerate() {
-        let signed = proposal.signatures.iter().any(|s| s.signer == *signer);
+        let signed = proposal.signatures.iter().any(|sig| sig.signer == *signer);
         let marker = if signed {
-            colored::Colorize::green("✓")
+            "signed".green()
         } else {
-            colored::Colorize::red("✗")
+            "pending".yellow()
         };
-        println!("  {} {}. {}", marker, idx + 1, signer);
+        println!("  {:>2}. {:<8} {}", idx + 1, marker, signer);
     }
 
     println!();
@@ -401,7 +503,6 @@ fn view_proposal(proposal_path: &std::path::Path) -> Result<()> {
         println!("  {} {}: {}...", marker, sig.signer, preview);
     }
     println!();
-
     Ok(())
 }
 
@@ -412,8 +513,8 @@ fn check_status(proposal_path: &std::path::Path) -> Result<()> {
     let remaining = proposal.threshold as isize - signed as isize;
 
     println!();
-    println!("{}", colored::Colorize::cyan("═══ SIGNATURE STATUS ═══"));
-    println!("Progress: {}/{}", signed, proposal.threshold);
+    p::header("Signature Status");
+    print_progress(&proposal);
 
     let (bar, percent) = multisig::render_progress_bar(signed, proposal.threshold);
     print!("  [");
@@ -424,25 +525,16 @@ fn check_status(proposal_path: &std::path::Path) -> Result<()> {
             print!("{}", colored::Colorize::red("░"));
         }
     }
-    println!("] {}%", percent);
-
-    println!();
-    if remaining > 0 {
-        println!("  {} signatures remaining", remaining);
-        println!();
-        for signer in &proposal.signers {
-            if !proposal.signatures.iter().any(|s| s.signer == *signer) {
-                println!("    ⏳ Waiting for: {}", signer);
-            }
-        }
-    } else {
-        println!(
-            "  {} All signatures collected!",
-            colored::Colorize::green("✓")
-        );
+    if !validation.missing_signers.is_empty() {
+        p::info(&format!(
+            "Pending signers: {}",
+            validation.missing_signers.join(", ")
+        ));
     }
-    println!();
 
+    if !validation.invalid_signers.is_empty() || !validation.duplicate_signers.is_empty() {
+        anyhow::bail!("Proposal contains invalid signature data");
+    }
     Ok(())
 }
 
@@ -466,10 +558,9 @@ fn submit_proposal(proposal_path: &std::path::Path, network: &str) -> Result<()>
     multisig::validate_for_submit(&proposal)?;
 
     p::info(&format!("Submitting proposal to {}", network));
-    println!(
-        "  Signatures: {}/{}",
-        proposal.signatures.len(),
-        proposal.threshold
+    p::kv(
+        "Signatures",
+        &format!("{}/{}", validation.valid_signatures, proposal.threshold),
     );
     for sig in &proposal.signatures {
         println!("    ✓ {} verified", sig.signer);
@@ -479,7 +570,6 @@ fn submit_proposal(proposal_path: &std::path::Path, network: &str) -> Result<()>
     p::success("Proposal submitted successfully");
     println!("  Hash: abc123def456...");
     println!();
-
     Ok(())
 }
 
@@ -496,7 +586,6 @@ fn export_proposal(proposal_path: &std::path::Path, output: Option<PathBuf>) -> 
     save_proposal(&output_file, &proposal)?;
 
     p::success(&format!("Proposal exported: {}", output_file.display()));
-
     Ok(())
 }
 
@@ -509,7 +598,7 @@ fn import_proposal(input_path: &std::path::Path, output: Option<PathBuf>) -> Res
     save_proposal(&output_file, &proposal)?;
 
     p::success(&format!("Proposal imported: {}", output_file.display()));
-
+    print_progress(&proposal);
     Ok(())
 }
 
@@ -553,8 +642,21 @@ async fn notify_signers(
 
 fn list_templates() -> Result<()> {
     println!();
-    println!("{}", colored::Colorize::cyan("═══ MULTI-SIG TEMPLATES ═══"));
+    p::header("Multi-Sig Templates");
+    for template in multisig::common_templates() {
+        println!(
+            "  {} - {} [{}/{}]",
+            template.name.yellow(),
+            template.description,
+            template.threshold,
+            template.signers.len()
+        );
+    }
     println!();
+    println!("Usage: starforge multisig from-template <template> <file> --network testnet");
+    println!();
+    Ok(())
+}
 
     for template in multisig::template_definitions() {
         println!(
@@ -565,14 +667,37 @@ fn list_templates() -> Result<()> {
     }
 
     println!();
-    println!("Usage: starforge multisig from-template <template> --output <file>");
-    println!();
-
+    p::success(&format!("Proposal created: {}", output.display()));
+    p::kv(
+        "Template",
+        proposal.metadata.title.as_deref().unwrap_or(template),
+    );
+    p::kv(
+        "Threshold",
+        &format!("{}/{}", proposal.threshold, proposal.signers.len()),
+    );
+    p::kv("Signers", &proposal.signers.join(", "));
+    print_progress(&proposal);
     Ok(())
 }
 
-fn from_template(template: &str, output: &std::path::Path) -> Result<()> {
-    p::info(&format!("Creating proposal from template '{}'", template));
+fn load_proposal(path: &Path) -> Result<multisig::Proposal> {
+    let contents = std::fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&contents)?)
+}
+
+fn save_proposal(path: &Path, proposal: &multisig::Proposal) -> Result<()> {
+    std::fs::write(path, serde_json::to_string_pretty(proposal)?)?;
+    Ok(())
+}
+
+fn parse_signers(signers: &str) -> Vec<String> {
+    signers
+        .split(',')
+        .map(|signer| signer.trim().to_string())
+        .filter(|signer| !signer.is_empty())
+        .collect()
+}
 
     let proposal = multisig::proposal_from_template(template)?;
     let signers: Vec<&str> = proposal.signers.iter().map(String::as_str).collect();
@@ -588,7 +713,24 @@ fn from_template(template: &str, output: &std::path::Path) -> Result<()> {
     println!("  Signers: {}", signers.join(", "));
     println!();
 
-    p::success(&format!("Proposal created: {}", output.display()));
+    let default_message = format!(
+        "Signature requested for proposal {} ({}/{})",
+        proposal.id, progress.signed, progress.required
+    );
+    let mut data = HashMap::new();
+    data.insert("proposal_id".to_string(), proposal.id.clone());
+    data.insert("network".to_string(), proposal.network.clone());
+    data.insert("threshold".to_string(), proposal.threshold.to_string());
+    data.insert(
+        "pending_signers".to_string(),
+        progress.pending_signers.join(","),
+    );
+    data.insert("message".to_string(), message.unwrap_or(default_message));
 
+    notifications::send_notification("multisig_signature_request", &data, "medium")?;
+    p::success(&format!(
+        "Queued signature request notification for {} signer(s)",
+        progress.pending_signers.len()
+    ));
     Ok(())
 }
