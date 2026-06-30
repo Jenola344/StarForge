@@ -1,7 +1,8 @@
-use crate::utils::{bindings, call_graph, config, crypto, print as p, soroban};
+use crate::utils::{bindings, call_graph, config, print as p, soroban, wallet_signer};
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
 use colored::*;
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -56,6 +57,12 @@ pub struct InvokeArgs {
     /// Submit the transaction after simulation
     #[arg(long, default_value = "false")]
     pub submit: bool,
+    /// Sign with a hardware wallet instead of a local secret key
+    #[arg(long, value_enum)]
+    pub hardware: Option<HardwareWalletKind>,
+    /// HD derivation path for hardware wallet signing
+    #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
+    pub hd_path: String,
 }
 
 #[derive(Args)]
@@ -81,6 +88,12 @@ pub struct UploadArgs {
     /// Wallet name to use for signing
     #[arg(long)]
     pub wallet: Option<String>,
+    /// Sign with a hardware wallet instead of a local secret key
+    #[arg(long, value_enum)]
+    pub hardware: Option<HardwareWalletKind>,
+    /// HD derivation path for hardware wallet signing
+    #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
+    pub hd_path: String,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -234,10 +247,10 @@ async fn handle_invoke(args: InvokeArgs) -> Result<()> {
         p::warn("You are invoking on MAINNET. This may cost real XLM if submitted.");
     }
 
-    // Load and optionally decrypt wallet for submission
-    let submit_wallet: Option<crate::utils::config::WalletEntry> = if args.submit {
+    // Load wallet and signing configuration for submission
+    let (submit_wallet, signing_request) = if args.submit {
         let cfg = config::load()?;
-        let mut w = if let Some(ref wallet_name) = args.wallet {
+        let wallet = if let Some(ref wallet_name) = args.wallet {
             cfg.wallets
                 .iter()
                 .find(|w| &w.name == wallet_name)
@@ -247,31 +260,35 @@ async fn handle_invoke(args: InvokeArgs) -> Result<()> {
                         wallet_name
                     )
                 })?
-                .clone()
         } else if !cfg.wallets.is_empty() {
             p::info(&format!(
                 "No --wallet specified. Using: {}",
                 cfg.wallets[0].name.cyan()
             ));
-            cfg.wallets[0].clone()
+            &cfg.wallets[0]
         } else {
             anyhow::bail!(
                 "No wallets found for submission. Create one first:\n  starforge wallet create deployer --fund"
             );
         };
-        p::kv("Wallet", &w.name);
-        if let Some(sk) = &w.secret_key.clone() {
-            if sk.contains(':') {
-                let pwd = crypto::prompt_password(
-                    &format!("Enter password to decrypt wallet '{}'", w.name),
-                    false,
-                )?;
-                w.secret_key = Some(crypto::decrypt_secret(&pwd, sk)?);
-            }
+        p::kv("Wallet", &wallet.name);
+        if wallet.secret_key.is_none() && args.hardware.is_none() {
+            anyhow::bail!(
+                "Wallet '{}' has no local secret key. Use --hardware ledger or --hardware trezor.",
+                wallet.name
+            );
         }
-        Some(w)
+        let signing = wallet_signer::SigningRequest::from_options(
+            Some(wallet),
+            args.hardware,
+            Some(&args.hd_path),
+            &args.network,
+            false,
+            "contract invocation",
+        )?;
+        (Some(wallet.clone()), Some(signing))
     } else {
-        None
+        (None, None)
     };
 
     p::separator();
@@ -291,7 +308,9 @@ async fn handle_invoke(args: InvokeArgs) -> Result<()> {
         &arg_types,
         &args.network,
         submit_wallet.as_ref(),
-    ).await?;
+        signing_request.as_ref(),
+    )
+    .await?;
 
     let simulation_result = outcome.simulation;
     p::kv_accent("Simulation", "✓ Success");

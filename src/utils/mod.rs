@@ -11,6 +11,7 @@ pub mod deploy_history;
 pub mod deploy_orchestrator;
 pub mod docs;
 pub mod hardware_wallet;
+pub mod wallet_signer;
 pub mod horizon;
 pub mod logging;
 pub mod mnemonic;

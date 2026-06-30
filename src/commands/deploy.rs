@@ -1,7 +1,8 @@
-use crate::utils::{config, confirmation, horizon, optimizer, print as p, soroban};
+use crate::utils::{config, confirmation, horizon, optimizer, print as p, soroban, wallet_signer};
 use anyhow::Result;
 use clap::Args;
 use colored::*;
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -43,6 +44,12 @@ pub struct DeployArgs {
     /// deployment plan and exits. Implies --simulate.
     #[arg(long, default_value = "false")]
     pub dry_run: bool,
+    /// Sign deployment with a hardware wallet (Ledger/Trezor)
+    #[arg(long, value_enum)]
+    pub hardware: Option<HardwareWalletKind>,
+    /// HD derivation path for hardware wallet signing
+    #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
+    pub hd_path: String,
 }
 
 fn is_wasm_above_size_limit(wasm_size_kb: f64) -> bool {
@@ -368,7 +375,14 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
     .add("Wallet", &wallet.name)
     .add("Public Key", &wallet.public_key)
     .add("Optimized", if args.optimize { "Yes" } else { "No" })
-    .add("Execute", if args.execute { "Yes" } else { "No (dry-run)" });
+    .add("Execute", if args.execute { "Yes" } else { "No (dry-run)" })
+    .add(
+        "Signer",
+        &match args.hardware {
+            Some(device) => format!("hardware ({})", device),
+            None => format!("local ({})", wallet.name),
+        },
+    );
 
     let confirm_config = confirmation::ConfirmationConfig {
         risk_level,
@@ -381,6 +395,26 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
 
     if !confirmation::confirm_operation(&summary, &confirm_config)? {
         return Ok(());
+    }
+
+    if args.execute {
+        if let Some(device) = args.hardware {
+            let signing_request = wallet_signer::SigningRequest::from_options(
+                Some(wallet),
+                Some(device),
+                Some(&args.hd_path),
+                &args.network,
+                args.yes,
+                "contract deployment",
+            )?;
+            soroban::sign_deploy_transaction(&wasm_hash, wallet, &args.network, &signing_request)?;
+            p::success(&format!("Deployment transaction signed on {}", device));
+        } else if wallet.secret_key.is_none() {
+            anyhow::bail!(
+                "Wallet '{}' has no local secret key. Use --hardware ledger or --hardware trezor for deployment.",
+                wallet.name
+            );
+        }
     }
 
     println!();
