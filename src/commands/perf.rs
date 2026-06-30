@@ -2,6 +2,7 @@ use crate::utils::{performance as perf, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Subcommand)]
 pub enum PerfCommands {
@@ -144,6 +145,276 @@ pub async fn handle(cmd: PerfCommands) -> Result<()> {
             iterations,
         } => benchmark(contract, iterations),
     }
+}
+
+// ── Advanced Profiling Commands ──────────────────────────────────────────────
+
+#[derive(Subcommand)]
+pub enum AdvancedPerfCommands {
+    /// Advanced performance analysis with bottleneck detection
+    Analyze {
+        /// Contract ID
+        contract: String,
+        /// Network (default: testnet)
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+    /// Detect performance regressions
+    DetectRegression {
+        /// Contract ID
+        contract: String,
+        /// Analysis period in hours (default: 24)
+        #[arg(long, default_value_t = 24)]
+        period_hours: u64,
+        /// Network (default: testnet)
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+    /// Compare performance across time periods
+    Compare {
+        /// Contract ID
+        contract: String,
+        /// Time window in hours (default: 24)
+        #[arg(long, default_value_t = 24)]
+        hours_back: u64,
+        /// Network (default: testnet)
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+    /// Generate comprehensive performance dashboard
+    GenerateDashboard {
+        /// Contract ID
+        contract: String,
+        /// Network (default: testnet)
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+}
+
+// ── Advanced Profiling Command Handlers ──────────────────────────────────────
+
+pub async fn handle_advanced(cmd: AdvancedPerfCommands) -> Result<()> {
+    match cmd {
+        AdvancedPerfCommands::Analyze { contract, network } => analyze(contract, network),
+        AdvancedPerfCommands::DetectRegression { contract, period_hours, network } => detect_regression(contract, period_hours, network),
+        AdvancedPerfCommands::Compare { contract, hours_back, network } => compare(contract, hours_back, network),
+        AdvancedPerfCommands::GenerateDashboard { contract, network } => generate_dashboard(contract, network),
+    }
+}
+
+fn analyze(contract: String, network: String) -> Result<()> {
+    p::header("Advanced Performance Analysis");
+    p::separator();
+    p::kv("Contract", &contract);
+    p::kv("Network", &network);
+    p::separator();
+
+    let analysis = perf::analyze_bottlenecks(&contract)?;
+
+    println!();
+    p::info("Bottleneck Analysis Results");
+    p::kv("Overall Score", &format!("{:.1}/100", analysis.overall_score));
+    p::kv("Memory Leaks Detected", &analysis.memory_leaks_detected.to_string());
+
+    if !analysis.bottleneck_operations.is_empty() {
+        println!();
+        p::warn("Frequent Operations (Potential Bottlenecks):");
+        for op in &analysis.bottleneck_operations {
+            println!("  • {}", op);
+        }
+    }
+
+    if !analysis.high_gas_operations.is_empty() {
+        println!();
+        p::warn("High Gas Consumption Operations:");
+        for op in &analysis.high_gas_operations {
+            println!("  • {}", op);
+        }
+    }
+
+    if analysis.bottleneck_operations.is_empty() && analysis.high_gas_operations.is_empty() {
+        p::success("No significant bottlenecks detected!");
+    }
+
+    println!();
+    p::separator();
+    Ok(())
+}
+
+fn detect_regression(contract: String, period_hours: u64, network: String) -> Result<()> {
+    p::header("Performance Regression Detection");
+    p::separator();
+    p::kv("Contract", &contract);
+    p::kv("Network", &network);
+    p::kv("Analysis Period", &format!("{} hours", period_hours));
+    p::separator();
+
+    let report = perf::detect_regression(&contract, period_hours)?;
+
+    println!();
+    p::info("Regression Report");
+    p::kv("Baseline Avg Gas", &format!("{:.0}", report.baseline_avg));
+    p::kv("Current Avg Gas", &format!("{:.0}", report.current_avg));
+    p::kv("Change", &format!("{:+.1}%", report.regression_percentage));
+
+    println!();
+    p::info("Trends:");
+    for trend in &report.trends {
+        if trend.contains("increased") {
+            p::warn(&format!("  ⚠ {}", trend));
+        } else if trend.contains("decreased") {
+            p::success(&format!("  ✓ {}", trend));
+        } else {
+            p::info(&format!("  • {}", trend));
+        }
+    }
+
+    let regression_count = report.regression_points.iter().filter(|r| r.regression_detected).count();
+    if regression_count > 0 {
+        println!();
+        p::warn(&format!("{} regression points detected:", regression_count));
+        for point in &report.regression_points {
+            if point.regression_detected {
+                println!(
+                    "  {} gas={} time={}ms [{}]",
+                    &point.timestamp[..19],
+                    point.gas_used,
+                    point.execution_time_ms,
+                    if point.success { "OK" } else { "FAIL" }
+                );
+            }
+        }
+    } else {
+        p::success("No regressions detected!");
+    }
+
+    println!();
+    p::separator();
+    Ok(())
+}
+
+fn compare(contract: String, hours_back: u64, network: String) -> Result<()> {
+    p::header("Performance Comparison");
+    p::separator();
+    p::kv("Contract", &contract);
+    p::kv("Network", &network);
+    p::kv("Time Window", &format!("{} hours", hours_back));
+    p::separator();
+
+    let report = perf::compare_profiles(&contract, hours_back)?;
+
+    println!();
+    p::info("Comparison Results");
+
+    if !report.performance_differences.is_empty() {
+        for (metric, diff) in &report.performance_differences {
+            let label = metric.replace('_', " ");
+            if *diff > 0.0 {
+                p::warn(&format!("  {} +{:.1}% (regression)", label, diff));
+            } else {
+                p::success(&format!("  {} {:.1}% (improvement)", label, diff));
+            }
+        }
+    } else {
+        p::info("Insufficient data for comparison (need at least 2 snapshots)");
+    }
+
+    println!();
+    p::info("Recommendations:");
+    if report.recommendations.is_empty() {
+        p::success("  No specific recommendations at this time.");
+    } else {
+        for rec in &report.recommendations {
+            println!("  • {}", rec);
+        }
+    }
+
+    println!();
+    p::separator();
+    Ok(())
+}
+
+fn generate_dashboard(contract: String, network: String) -> Result<()> {
+    p::header("Performance Dashboard");
+    p::separator();
+    p::kv("Contract", &contract);
+    p::kv("Network", &network);
+    p::separator();
+
+    let dashboard = perf::generate_dashboard(&contract, &network)?;
+
+    println!();
+    p::info("═══ EXECUTION SUMMARY ═══");
+    p::kv("Total Executions", &dashboard.summary.total_executions.to_string());
+    p::kv("Avg Gas Used", &format!("{:.0}", dashboard.summary.avg_gas_used));
+    p::kv("Max Gas Used", &format!("{:.0}", dashboard.summary.max_gas_used));
+    p::kv("Avg Execution Time", &format!("{:.1}ms", dashboard.summary.avg_execution_time_ms));
+    p::kv("Success Rate", &format!("{:.1}%", dashboard.summary.success_rate));
+
+    println!();
+    p::info("═══ BOTTLENECK ANALYSIS ═══");
+    p::kv("Overall Score", &format!("{:.1}/100", dashboard.bottleneck_analysis.overall_score));
+    p::kv("Memory Leaks Detected", &dashboard.bottleneck_analysis.memory_leaks_detected.to_string());
+    
+    if !dashboard.bottleneck_analysis.bottleneck_operations.is_empty() {
+        p::warn("Frequent Operations:");
+        for op in &dashboard.bottleneck_analysis.bottleneck_operations {
+            println!("  • {}", op);
+        }
+    }
+    if !dashboard.bottleneck_analysis.high_gas_operations.is_empty() {
+        p::warn("High Gas Operations:");
+        for op in &dashboard.bottleneck_analysis.high_gas_operations {
+            println!("  • {}", op);
+        }
+    }
+
+    println!();
+    p::info("═══ REGRESSION DETECTION ═══");
+    p::kv("Baseline Avg", &format!("{:.0}", dashboard.regression_report.baseline_avg));
+    p::kv("Current Avg", &format!("{:.0}", dashboard.regression_report.current_avg));
+    p::kv("Change", &format!("{:+.1}%", dashboard.regression_report.regression_percentage));
+    for trend in &dashboard.regression_report.trends {
+        if trend.contains("increased") {
+            p::warn(&format!("  ⚠ {}", trend));
+        } else if trend.contains("decreased") {
+            p::success(&format!("  ✓ {}", trend));
+        } else {
+            p::info(&format!("  • {}", trend));
+        }
+    }
+
+    println!();
+    p::info("═══ PERFORMANCE COMPARISON ═══");
+    if !dashboard.comparison_report.performance_differences.is_empty() {
+        for (metric, diff) in &dashboard.comparison_report.performance_differences {
+            let label = metric.replace('_', " ");
+            if *diff > 0.0 {
+                p::warn(&format!("  {} +{:.1}%", label, diff));
+            } else {
+                p::success(&format!("  {} {:.1}%", label, diff));
+            }
+        }
+    } else {
+        p::info("  No comparison data available");
+    }
+    for rec in &dashboard.comparison_report.recommendations {
+        println!("  • {}", rec);
+    }
+
+    if !dashboard.alerts.is_empty() {
+        println!();
+        p::warn("Configured Alerts:");
+        for alert in &dashboard.alerts {
+            println!("  • {} {} {} ({})", alert.metric_name, 
+                if matches!(alert.direction, perf::AlertDirection::Above) { ">" } else { "<" },
+                alert.threshold, alert.message);
+        }
+    }
+
+    println!();
+    p::separator();
+    Ok(())
 }
 
 fn record(

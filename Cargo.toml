@@ -86,6 +86,7 @@ csv = "1.0"
 
 [features]
 hardware-wallet = ["dep:hidapi", "dep:trezor-client"]
+memory-profiling = []
 
 [dev-dependencies]
 criterion = "0.5.1"
