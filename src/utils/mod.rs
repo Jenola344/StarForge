@@ -1,4 +1,6 @@
+pub mod approval_engine;
 pub mod audit;
+pub mod compliance;
 pub mod backup;
 pub mod benchmarking;
 pub mod bindings;

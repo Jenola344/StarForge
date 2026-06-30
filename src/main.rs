@@ -159,6 +159,10 @@ enum Commands {
     #[command(subcommand)]
     Analytics(commands::analytics::AnalyticsCommands),
 
+    /// Approval workflow for contract deployments (multi-level approvals, audit, compliance)
+    #[command(subcommand)]
+    Approval(commands::approval::ApprovalCommands),
+
     /// Execute an installed plugin command (e.g. `starforge defi ...`)
     #[command(external_subcommand)]
     External(Vec<String>),
@@ -214,6 +218,7 @@ async fn main() {
         Commands::Perf(_) => "perf",
         Commands::Docs(_) => "docs",
         Commands::Analytics(_) => "analytics",
+        Commands::Approval(_) => "approval",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -254,6 +259,7 @@ async fn main() {
         Commands::Perf(cmd) => commands::perf::handle(cmd).await,
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
+        Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
