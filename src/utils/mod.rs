@@ -10,6 +10,7 @@ pub mod confirmation;
 pub mod contract_testing;
 pub mod crypto;
 pub mod database;
+pub mod debugger;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
 pub mod deployment_verify;

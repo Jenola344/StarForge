@@ -6,6 +6,7 @@ pub mod command_tree;
 pub mod completions;
 pub mod config;
 pub mod contract;
+pub mod debug;
 pub mod deploy;
 pub mod deployments;
 pub mod diagnostics;
